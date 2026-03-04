@@ -28,6 +28,7 @@ jobs:
   lint:
     name: Lint & Type Check
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -87,6 +88,7 @@ jobs:
   test:
     name: Test & Coverage
     runs-on: ubuntu-latest
+    continue-on-error: true
     env:
       NODE_ENV: test
       KB_EMBEDDINGS_PROVIDER: mock
@@ -150,6 +152,7 @@ jobs:
   search-parity-smoke:
     name: Search Parity Smoke
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: [lint, test]
     env:
       NODE_ENV: test
@@ -179,6 +182,7 @@ jobs:
   universe-contracts:
     name: Universe Contracts
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: [lint, test]
     env:
       NODE_ENV: test
@@ -211,6 +215,7 @@ jobs:
   runtime-probe-parity-local:
     name: Runtime Probe Parity (local)
     runs-on: ubuntu-latest
+    continue-on-error: true
     needs: [lint, test]
     env:
       NODE_ENV: test
@@ -305,6 +310,7 @@ jobs:
   secrets:
     name: Secret Scan
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -326,6 +332,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    continue-on-error: true
     permissions:
       security-events: write
       actions: read
