@@ -444,14 +444,14 @@ describe('Phase 2 Search API Endpoints', () => {
 
     it('keeps page payload stable on cache hits for identical page/pageSize', async () => {
       const first = await request(app)
-        .get('/api/search/hybrid?q=context&page=1&pageSize=2')
+        .get('/api/search/hybrid?q=context&page=1&pageSize=5')
         .expect(200);
       const second = await request(app)
-        .get('/api/search/hybrid?q=context&page=1&pageSize=2')
+        .get('/api/search/hybrid?q=context&page=1&pageSize=5')
         .expect(200);
 
-      expect(first.body.data).toHaveLength(2);
-      expect(second.body.data).toHaveLength(2);
+      expect(first.body.data).toHaveLength(5);
+      expect(second.body.data).toHaveLength(5);
       expect(second.body.stats?.cacheHit).toBe(true);
       expect(second.body.data.map((unit: { id: string }) => unit.id)).toEqual(
         first.body.data.map((unit: { id: string }) => unit.id)
