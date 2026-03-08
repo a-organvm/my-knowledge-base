@@ -39,6 +39,7 @@ export type Tab =
   | 'tags'
   | 'conversations'
   | 'exports'
+  | 'import'
   | 'pages'
   | 'notifications'
   | 'profile'

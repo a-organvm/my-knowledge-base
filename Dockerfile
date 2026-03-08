@@ -6,18 +6,26 @@ WORKDIR /app
 # Install build dependencies
 RUN apk add --no-cache python3 make g++ cairo-dev jpeg-dev pango-dev giflib-dev
 
-# Copy package files
+# Copy all workspace package.json files so npm ci resolves workspace links
 COPY package*.json ./
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/github-pages-index-core/package.json packages/github-pages-index-core/
+COPY web-react/package.json web-react/
+COPY apps/mobile/package.json apps/mobile/
+COPY apps/desktop/package.json apps/desktop/
 
-# Install dependencies needed for build (includes devDependencies like TypeScript)
+# Install dependencies (includes devDependencies like TypeScript)
 RUN npm ci && \
     npm cache clean --force
 
-# Copy source code
-COPY . .
+# Copy source code (web-react/apps excluded via .dockerignore for image size)
+COPY src/ src/
+COPY packages/ packages/
+COPY tsconfig.json ./
 
-# Build TypeScript
-RUN npm run build
+# Build contracts first (workspace dependency), then main project
+RUN npm run -w packages/contracts build && \
+    npm run build
 
 # Trim to production-only dependencies for runtime image
 RUN npm prune --omit=dev
@@ -39,10 +47,11 @@ RUN apk add --no-cache \
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
+COPY --from=builder --chown=nodejs:nodejs /app/packages ./packages
 
-# Create required directories
-RUN mkdir -p db atomized/embeddings && \
-    chown -R nodejs:nodejs db atomized
+# Create required directories (including /data for Fly.io volume mount)
+RUN mkdir -p db atomized/embeddings /data .batch-checkpoints logs && \
+    chown -R nodejs:nodejs db atomized /data .batch-checkpoints logs /app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \

@@ -20,11 +20,12 @@ import { searchApi } from './search';
 import { statsApi } from './stats';
 import { unitsApi } from './units';
 import { universeApi } from './universe';
+import { ingestApi } from './ingest';
 
 // Re-export shared types and split domain clients.
 export type { ApiResponse };
 export { API_BASE, ApiError };
-export { unitsApi, searchApi, federationApi, statsApi, universeApi };
+export { unitsApi, searchApi, federationApi, statsApi, universeApi, ingestApi };
 
 // Tags API
 export const tagsApi = {

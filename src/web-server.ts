@@ -19,6 +19,7 @@ import { createWebSocketRoutes, createWebSocketHandler } from './websocket-api.j
 import { createConfigRoutes } from './config-api.js';
 import { createExportRoutes } from './export-api.js';
 import { setupApi } from './api.js';
+import { createIngestionRouter } from './ingestion-api.js';
 import { config } from 'dotenv';
 
 config();
@@ -68,7 +69,8 @@ if (enforceHttps) {
 }
 
 // Initialize services
-const db = new KnowledgeDatabase('./db/knowledge.db');
+const dbPath = process.env.DATABASE_PATH || './db/knowledge.db';
+const db = new KnowledgeDatabase(dbPath);
 const rawDb = db.getRawHandle();
 
 function buildWordCloudData(limit: number, source: string) {
@@ -447,17 +449,20 @@ app.get('/api/conversations', (req, res) => {
 });
 
 // Collections & Favorites API
-const collectionsManager = new CollectionsManager('./db/knowledge.db');
+const collectionsManager = new CollectionsManager(dbPath);
 app.use('/api/collections', createCollectionsRoutes(collectionsManager));
 app.use('/api/favorites', createFavoritesRoutes(collectionsManager));
 
 // Saved Searches API
-const savedSearchesRouter = createSavedSearchesRouter('./db/knowledge.db');
+const savedSearchesRouter = createSavedSearchesRouter(dbPath);
 app.use('/api/searches', savedSearchesRouter);
 
 // WebSocket Manager and API routes
 const wsManager = new WebSocketManager();
 app.use('/api/ws', createWebSocketRoutes(wsManager));
+
+// Ingestion API (document upload, URL clipping, text import)
+app.use('/api/ingest', createIngestionRouter(db));
 
 // Mount canonical REST API router after legacy extension routes so /api fallback behavior
 // remains JSON-shaped without shadowing extension endpoints (collections/searches/ws, etc.).

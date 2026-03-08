@@ -1,0 +1,32 @@
+app = "organvm-knowledge-base"
+primary_region = "iad"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  DATABASE_PATH = "/data/knowledge.db"
+  ENFORCE_HTTPS = "true"
+  CORS_ORIGINS = "https://organvm-i-theoria.github.io,https://4444j99.github.io,https://stakeholder-portal-ten.vercel.app,http://localhost:5173"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "requests"
+    hard_limit = 250
+    soft_limit = 200
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+[mounts]
+  source = "kb_data"
+  destination = "/data"

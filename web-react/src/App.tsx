@@ -27,6 +27,7 @@ import { GraphTab } from './components/tabs/GraphTab';
 import { TagsTab } from './components/tabs/TagsTab';
 import { ConversationsTab } from './components/tabs/ConversationsTab';
 import { ExportsTab } from './components/tabs/ExportsTab';
+import { ImportTab } from './components/tabs/ImportTab';
 import { GitHubPagesTab } from './components/tabs/GitHubPagesTab';
 import { NotificationsTab } from './components/tabs/NotificationsTab';
 import { ProfileTab } from './components/tabs/ProfileTab';
@@ -86,6 +87,8 @@ function AppContent() {
         return <ConversationsTab />;
       case 'exports':
         return <ExportsTab />;
+      case 'import':
+        return <ImportTab />;
       case 'pages':
         return <GitHubPagesTab />;
       case 'notifications':
