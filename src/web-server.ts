@@ -495,8 +495,9 @@ wss.on('connection', (ws: WebSocket) => {
   wsHandler(ws);
 });
 
-// Start server
-server.listen(PORT, () => {
+// Start server (bind 0.0.0.0 for container environments like Fly.io)
+const HOST = process.env.HOST || '0.0.0.0';
+server.listen(Number(PORT), HOST, () => {
   console.log(`\n🌐 Knowledge Base Web UI (React)`);
   console.log(`\n📍 Server running at: http://localhost:${PORT}`);
   console.log(`   WebSocket available at: ws://localhost:${PORT}/ws`);
