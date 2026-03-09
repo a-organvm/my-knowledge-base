@@ -42,7 +42,7 @@ const corsOptions = {
     .map(method => method.trim()),
 };
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 // Serve React app from web-react/dist (primary UI)
 const reactDistPath = join(__dirname, '../web-react/dist');
