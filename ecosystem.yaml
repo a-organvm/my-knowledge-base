@@ -1,0 +1,8 @@
+schema_version: '1.0'
+repo: my-knowledge-base
+organ: I
+display_name: 'Knowledge atomization system: exports Claude conversations, decomposes
+  into semantic units with vector search and intelligence extraction'
+delivery:
+- platform: web_app
+  status: not_started
