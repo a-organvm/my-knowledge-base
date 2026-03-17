@@ -1,8 +1,23 @@
 schema_version: '1.0'
 repo: my-knowledge-base
 organ: I
-display_name: 'Knowledge atomization system: exports Claude conversations, decomposes
-  into semantic units with vector search and intelligence extraction'
+display_name: "Knowledge atomization system — exports Claude conversations, decomposes into semantic units with vector search"
+
 delivery:
 - platform: web_app
+  status: in_progress
+  priority: critical
+  notes: "TypeScript web interface for knowledge browsing and search"
+  next_action: "Complete vector search integration and UI polish"
+- platform: api
+  status: in_progress
+  priority: high
+  notes: "REST API for semantic unit retrieval and intelligence extraction"
+  next_action: "Finalize API endpoints for search and export"
+
+content:
+- platform: docs_site
   status: not_started
+  priority: high
+  notes: "User guide for conversation export, atomization, and search"
+  next_action: "Write getting-started guide for knowledge extraction workflow"
