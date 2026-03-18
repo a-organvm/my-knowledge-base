@@ -456,3 +456,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines, including code s
 **[@4444J99](https://github.com/4444J99)**
 
 Part of [ORGAN-I: Theoria](https://github.com/organvm-i-theoria) — the theoretical organ of the [ORGAN system](https://github.com/meta-organvm).
+
+<!-- SYSTEM-NAV-START -->
+
+---
+
+<sub>[Case Study](https://4444j99.github.io/portfolio/projects/knowledge-base/) · [Portfolio](https://4444j99.github.io/portfolio/) · [System Directory](https://4444j99.github.io/portfolio/directory/) · [ORGAN I · Theoria](https://organvm-i-theoria.github.io/) · Part of the <a href="https://4444j99.github.io/portfolio/directory/">ORGANVM eight-organ system</a></sub>
+
+<!-- SYSTEM-NAV-END -->
