@@ -23,6 +23,17 @@ agents:
     workflow: .github/workflows/ci-typescript.yml
     description: "Continuous integration pipeline"
 
+implements:
+  - concept: AMMOI
+    zettel_source: "post-flood/archive_original/.zettel-index.yaml#AMMOI"
+    aspect: "End-to-end epistemological pipeline — export, atomize, search, intelligence"
+  - concept: SVSE
+    zettel_source: "post-flood/archive_original/.zettel-index.yaml#SVSE"
+    aspect: "Identity-stable knowledge objects with mutable expression and versioned relationships"
+  - concept: structural_interrogation
+    zettel_source: "post-flood/archive_original/.zettel-index.yaml#structural_interrogation"
+    aspect: "7-dimension diagnostic applied to knowledge intake — Existence through Teleology"
+
 produces:
   - type: theory
     description: "Epistemological frameworks, recursive engines, ontological systems"
