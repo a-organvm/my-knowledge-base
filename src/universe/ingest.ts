@@ -3,6 +3,7 @@ import { dirname, extname, relative, resolve } from 'path';
 import fg from 'fast-glob';
 import { ProviderImportDetector } from '../sources/providers/detector.js';
 import { NormalizedConversation } from '../sources/providers/types.js';
+import { CHAT_THREAD_CONTENT_HASH_VERSION, createChatThreadContentHash } from './content-hash.js';
 import { UniverseStore } from './store.js';
 import { IntakePolicyEngine } from './intake-policy.js';
 
@@ -91,6 +92,11 @@ export class UniverseIngestService {
         followSymbolicLinks: false,
       })
       .slice(0, limit);
+    const contentHashesSeenThisRun = new Set<string>();
+
+    if (save) {
+      this.store.backfillChatThreadContentHashes();
+    }
 
     let filesIngested = 0;
     let filesQuarantined = 0;
@@ -131,15 +137,27 @@ export class UniverseIngestService {
         continue;
       }
 
-      filesIngested += 1;
-
-      if (!save) {
-        chatsIngested += conversations.length;
-        turnsIngested += conversations.reduce((sum, conversation) => sum + conversation.turns.length, 0);
-        continue;
-      }
+      let fileChatsIngested = 0;
+      let fileTurnsIngested = 0;
 
       for (const conversation of conversations) {
+        const turns = toPairedTurns(conversation);
+        const contentHash = createChatThreadContentHash({
+          turns,
+        });
+
+        if (contentHashesSeenThisRun.has(contentHash) || this.store.threadExistsByContentHash(contentHash)) {
+          continue;
+        }
+
+        contentHashesSeenThisRun.add(contentHash);
+
+        if (!save) {
+          fileChatsIngested += 1;
+          fileTurnsIngested += turns.length;
+          continue;
+        }
+
         const ingested = this.store.ingestNormalizedThread({
           provider: conversation.provider,
           providerDisplayName: conversation.provider.toUpperCase(),
@@ -153,14 +171,23 @@ export class UniverseIngestService {
             ...(conversation.metadata ?? {}),
             sourceFileExtension: extname(relPath),
             sourceRelativePath: relative(sourceRoot, absPath),
-            contentHash: IntakePolicyEngine.contentHash(scanContent),
+            contentHash,
+            contentHashVersion: CHAT_THREAD_CONTENT_HASH_VERSION,
           },
-          turns: toPairedTurns(conversation),
+          turns,
         });
 
-        chatsIngested += 1;
-        turnsIngested += ingested.turns.length;
+        fileChatsIngested += 1;
+        fileTurnsIngested += ingested.turns.length;
       }
+
+      if (fileChatsIngested === 0) {
+        continue;
+      }
+
+      filesIngested += 1;
+      chatsIngested += fileChatsIngested;
+      turnsIngested += fileTurnsIngested;
     }
 
     const report: IngestReport = {

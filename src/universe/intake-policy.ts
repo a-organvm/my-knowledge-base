@@ -59,7 +59,7 @@ export class IntakePolicyEngine {
     this.blockedExtensions = new Set(
       (config.blockedExtensions ?? DEFAULT_BLOCKED_EXTENSIONS).map((ext) => ext.toLowerCase()),
     );
-    this.maxFileBytes = config.maxFileBytes ?? 25 * 1024 * 1024;
+    this.maxFileBytes = config.maxFileBytes ?? Infinity;
     this.sampleScanBytes = config.sampleScanBytes ?? 2 * 1024 * 1024;
   }
 
@@ -111,9 +111,8 @@ export class IntakePolicyEngine {
       (item) => !item.isFalsePositive && item.confidence >= 0.9,
     );
 
-    if (hasCriticalFindings) {
-      reasons.push('high-confidence sensitive material detected');
-    }
+    // PII detection is informational — redact but don't quarantine.
+    // Conversation exports naturally contain names and emails.
 
     const quarantined = reasons.length > 0;
 

@@ -28,14 +28,29 @@ if (limitValue && (!Number.isFinite(limit) || (limit as number) <= 0)) {
 const db = new Database(dbPath);
 
 try {
+  console.error(`[ingest] db=${dbPath} root=${rootDir} limit=${limit ?? 'none'} save=${save}`);
   const store = new UniverseStore(db);
   const ingest = new UniverseIngestService(store);
 
+  let lastLog = Date.now();
   const report = ingest.run({
     rootDir,
     limit,
     save,
     reportDir,
+    onProgress: (event) => {
+      const now = Date.now();
+      if (event.kind === 'start') {
+        console.error(`[ingest] scanning ${event.totalFiles} files...`);
+      } else if (event.kind === 'file' && event.outcome !== 'skipped') {
+        console.error(`[ingest] ${event.outcome}: ${event.filePath} (chats=${event.fileChatsIngested ?? 0})`);
+      } else if (event.kind === 'checkpoint' || now - lastLog > 5000) {
+        console.error(`[ingest] ${event.processedFiles}/${event.totalFiles} | ingested=${event.filesIngested} quarantined=${event.filesQuarantined} chats=${event.chatsIngested} turns=${event.turnsIngested}`);
+        lastLog = now;
+      } else if (event.kind === 'complete') {
+        console.error(`[ingest] DONE: ${event.filesIngested} files, ${event.chatsIngested} chats, ${event.turnsIngested} turns`);
+      }
+    },
   });
 
   console.log(JSON.stringify(report, null, 2));
