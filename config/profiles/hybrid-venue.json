@@ -1,0 +1,64 @@
+{
+  "$schema": "../profile-schema.json",
+  "name": "hybrid-venue",
+  "description": "Performance venue configuration supporting both in-person and live-streamed events",
+  "version": "1.0.0",
+  "type": "venue",
+  "capabilities": {
+    "in_person": true,
+    "live_stream": true,
+    "recorded": true,
+    "interactive": true
+  },
+  "infrastructure": {
+    "audio": {
+      "channels": "stereo",
+      "sample_rate": 48000,
+      "bit_depth": 24,
+      "monitoring": "in-ear",
+      "streaming_codec": "AAC",
+      "streaming_bitrate": 320
+    },
+    "video": {
+      "resolution": "1920x1080",
+      "framerate": 30,
+      "codec": "H.264",
+      "streaming_platform": null,
+      "cameras": {
+        "min": 1,
+        "max": 4,
+        "switching": "manual"
+      }
+    },
+    "network": {
+      "min_upload_mbps": 10,
+      "redundancy": true,
+      "backup_connection": "cellular"
+    },
+    "lighting": {
+      "dmx_channels": 24,
+      "scenes": ["ambient", "performance", "transition", "blackout"],
+      "sync_to_audio": false
+    }
+  },
+  "layout": {
+    "stage_area_sqft": null,
+    "audience_capacity": null,
+    "streaming_station": {
+      "position": "rear-center",
+      "dedicated_operator": true
+    }
+  },
+  "integrations": {
+    "ticketing": null,
+    "chat_overlay": true,
+    "donation_widget": false,
+    "recording_archive": true
+  },
+  "defaults": {
+    "event_duration_minutes": 90,
+    "intermission": true,
+    "recording_format": "ProRes",
+    "archive_retention_days": 365
+  }
+}

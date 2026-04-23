@@ -1,0 +1,37 @@
+{
+  "name": "my-knowledge-base",
+  "version": "1.0.0",
+  "description": "Unified Knowledge Pipeline — personal knowledge management and AI conversation archival",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/organvm/my-knowledge-base"
+  },
+  "engine": {
+    "node": ">=20.0.0",
+    "python": ">=3.11"
+  },
+  "pipeline": {
+    "stages": ["ingest", "deduplicate", "atomize", "index", "cross-reference", "validate"],
+    "default_format": "jsonl",
+    "supported_providers": ["chatgpt", "claude", "gemini", "grok", "copilot", "perplexity"]
+  },
+  "directories": {
+    "intake": "intake/",
+    "raw": "raw/",
+    "atomized": "atomized/",
+    "db": "db/",
+    "scripts": "scripts/",
+    "tools": "tools/",
+    "logs": "logs/",
+    "backups": "backups/",
+    "config": "config/"
+  },
+  "features": {
+    "deduplication": true,
+    "semantic_search": true,
+    "cross_referencing": true,
+    "temporal_analysis": true,
+    "prompt_atomization": true,
+    "auto_classification": true
+  }
+}

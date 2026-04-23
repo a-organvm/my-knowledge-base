@@ -1,0 +1,34 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-04-23T00:00:00Z",
+  "pipeline": {
+    "status": "idle",
+    "current_phase": null,
+    "phases_completed": [],
+    "phases_pending": ["ingest", "deduplicate", "index", "cross-reference", "validate"]
+  },
+  "sources": {
+    "total": 0,
+    "by_provider": {},
+    "last_ingest": null
+  },
+  "atoms": {
+    "total": 0,
+    "by_status": {
+      "OPEN": 0,
+      "ANSWERED": 0,
+      "DEFERRED": 0,
+      "CLOSED": 0,
+      "FAILED": 0
+    },
+    "by_domain": {}
+  },
+  "jobs": {
+    "running": [],
+    "queued": [],
+    "completed": [],
+    "failed": []
+  },
+  "locks": {},
+  "checkpoints": []
+}

@@ -1,0 +1,59 @@
+{
+  "manifest_version": "1.0.0",
+  "project": {
+    "name": "my-knowledge-base",
+    "display_name": "Knowledge Base",
+    "description": "Personal knowledge database — Claude conversation export, atomization, and AI-powered intelligence extraction",
+    "organ": "ORGAN-I",
+    "organ_name": "Theoria",
+    "tier": "standard",
+    "status": "GRADUATED"
+  },
+  "repository": {
+    "org": "organvm-i-theoria",
+    "name": "my-knowledge-base",
+    "visibility": "private",
+    "default_branch": "main"
+  },
+  "stack": {
+    "primary_language": "TypeScript",
+    "runtime": "Node.js",
+    "module_system": "ESM",
+    "databases": ["SQLite", "ChromaDB"],
+    "ai_providers": ["Anthropic", "OpenAI"],
+    "test_framework": "Vitest",
+    "build_tool": "tsc"
+  },
+  "phases": {
+    "phase_1": { "name": "Foundation", "status": "complete", "scope": "Export & Atomization" },
+    "phase_2": { "name": "Semantic Intelligence", "status": "complete", "scope": "Vector Search" },
+    "phase_3": { "name": "Claude Intelligence", "status": "complete", "scope": "Advanced Analysis" },
+    "phase_4": { "name": "Web UI", "status": "complete", "scope": "React Frontend" },
+    "phase_5": { "name": "Ecosystem", "status": "in_progress", "scope": "Multi-source Integration" }
+  },
+  "capabilities": [
+    "conversation-export",
+    "knowledge-atomization",
+    "full-text-search",
+    "semantic-search",
+    "hybrid-search",
+    "insight-extraction",
+    "smart-tagging",
+    "relationship-detection",
+    "rest-api",
+    "web-ui",
+    "multi-source-ingestion"
+  ],
+  "edges": {
+    "produces": ["theory"],
+    "consumes": []
+  },
+  "governance": {
+    "promotion_state": "GRADUATED",
+    "has_ci": false,
+    "has_tests": true,
+    "has_seed_yaml": true,
+    "last_audit": null
+  },
+  "generated_at": "2026-04-23T00:00:00Z"
+}

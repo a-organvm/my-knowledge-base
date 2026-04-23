@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Standard API response envelope for the knowledge base pipeline",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["success", "error", "partial"],
+      "description": "Overall request status"
+    },
+    "data": {
+      "type": ["object", "array", "null"],
+      "description": "Response payload — shape varies by endpoint"
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "field": { "type": "string" }
+        },
+        "required": ["code", "message"]
+      },
+      "default": []
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "request_id": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "duration_ms": { "type": "number" },
+        "version": { "type": "string" }
+      }
+    },
+    "pagination": {
+      "type": "object",
+      "properties": {
+        "page": { "type": "integer" },
+        "per_page": { "type": "integer" },
+        "total": { "type": "integer" },
+        "has_next": { "type": "boolean" }
+      }
+    }
+  },
+  "required": ["status"]
+}

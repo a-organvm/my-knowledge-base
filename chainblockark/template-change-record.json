@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Template Change Record",
+  "description": "Tracks changes to syllabus, curriculum, and archetype templates within the knowledge base.",
+  "version": "1.0.0",
+  "records": [],
+  "record_schema": {
+    "type": "object",
+    "required": ["id", "template_name", "change_type", "timestamp", "author"],
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "Unique change record ID"
+      },
+      "template_name": {
+        "type": "string",
+        "description": "Name of the template that changed"
+      },
+      "change_type": {
+        "type": "string",
+        "enum": ["created", "modified", "deprecated", "archived", "forked"]
+      },
+      "timestamp": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "author": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "diff_summary": {
+        "type": "string",
+        "description": "Human-readable summary of what changed"
+      },
+      "previous_version": {
+        "type": ["string", "null"]
+      },
+      "new_version": {
+        "type": "string"
+      },
+      "breaking": {
+        "type": "boolean",
+        "default": false
+      }
+    }
+  },
+  "created_at": "2026-04-23T00:00:00Z"
+}

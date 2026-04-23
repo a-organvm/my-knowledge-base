@@ -1,0 +1,80 @@
+{
+  "$schema": "../profile-schema.json",
+  "name": "remote-broadcast",
+  "description": "Remote broadcast configuration for live streaming performances without physical venue",
+  "version": "1.0.0",
+  "type": "broadcast",
+  "streaming": {
+    "platforms": {
+      "primary": null,
+      "secondary": null,
+      "supported": ["youtube", "twitch", "vimeo", "custom-rtmp"]
+    },
+    "protocol": "RTMP",
+    "backup_protocol": "SRT",
+    "adaptive_bitrate": true,
+    "profiles": {
+      "high": {
+        "resolution": "1920x1080",
+        "framerate": 30,
+        "video_bitrate_kbps": 6000,
+        "audio_bitrate_kbps": 320,
+        "codec": "H.264",
+        "audio_codec": "AAC"
+      },
+      "medium": {
+        "resolution": "1280x720",
+        "framerate": 30,
+        "video_bitrate_kbps": 3000,
+        "audio_bitrate_kbps": 192,
+        "codec": "H.264",
+        "audio_codec": "AAC"
+      },
+      "low": {
+        "resolution": "854x480",
+        "framerate": 30,
+        "video_bitrate_kbps": 1500,
+        "audio_bitrate_kbps": 128,
+        "codec": "H.264",
+        "audio_codec": "AAC"
+      }
+    }
+  },
+  "audio": {
+    "input_channels": 2,
+    "sample_rate": 48000,
+    "monitoring": "local",
+    "noise_gate": true,
+    "compressor": true,
+    "limiter": true
+  },
+  "interaction": {
+    "chat_enabled": true,
+    "chat_overlay": true,
+    "polls": false,
+    "donations": false,
+    "moderation": {
+      "auto_filter": true,
+      "slow_mode_seconds": 0
+    }
+  },
+  "recording": {
+    "local_recording": true,
+    "format": "MKV",
+    "separate_audio_track": true,
+    "auto_archive": true
+  },
+  "network": {
+    "min_upload_mbps": 8,
+    "recommended_upload_mbps": 15,
+    "bonding": false,
+    "vpn_compatible": true
+  },
+  "scheduling": {
+    "countdown_timer": true,
+    "auto_start": false,
+    "auto_stop": false,
+    "pre_stream_scene": "waiting",
+    "post_stream_scene": "ended"
+  }
+}

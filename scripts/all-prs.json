@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Index of all pull requests across the knowledge base repository",
+  "generated_at": null,
+  "generator": "gh pr list --json number,title,state,author,createdAt,mergedAt,labels,headRefName",
+  "pull_requests": [],
+  "stats": {
+    "total": 0,
+    "open": 0,
+    "closed": 0,
+    "merged": 0,
+    "by_author": {},
+    "by_label": {}
+  },
+  "last_refreshed": null,
+  "refresh_command": "gh pr list --repo organvm/my-knowledge-base --state all --json number,title,state,author,createdAt,mergedAt,labels,headRefName --limit 500 > scripts/all-prs.json"
+}

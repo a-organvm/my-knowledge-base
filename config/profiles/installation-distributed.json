@@ -1,0 +1,76 @@
+{
+  "$schema": "../profile-schema.json",
+  "name": "installation-distributed",
+  "description": "Distributed installation configuration for multi-site or multi-node art installations",
+  "version": "1.0.0",
+  "type": "installation",
+  "topology": {
+    "mode": "distributed",
+    "nodes": {
+      "min": 2,
+      "max": 64,
+      "discovery": "mDNS",
+      "sync_protocol": "NTP"
+    },
+    "coordinator": {
+      "role": "elected",
+      "heartbeat_interval_ms": 1000,
+      "failover": true
+    }
+  },
+  "media": {
+    "content_distribution": "pull",
+    "cache_locally": true,
+    "formats": ["mp4", "png", "wav", "json"],
+    "max_asset_size_mb": 500,
+    "sync_on_boot": true
+  },
+  "sensors": {
+    "types": ["proximity", "motion", "ambient_light", "sound_level"],
+    "polling_rate_hz": 30,
+    "data_format": "json",
+    "local_processing": true,
+    "upstream_reporting": {
+      "enabled": true,
+      "interval_seconds": 10,
+      "protocol": "MQTT"
+    }
+  },
+  "display": {
+    "renderer": "browser",
+    "resolution": "native",
+    "orientation": "landscape",
+    "kiosk_mode": true,
+    "auto_start": true
+  },
+  "network": {
+    "mode": "mesh",
+    "transport": "wifi",
+    "fallback": "ethernet",
+    "bandwidth_per_node_mbps": 5,
+    "firewall": {
+      "inbound": "deny-all-except-cluster",
+      "outbound": "allow-updates-only"
+    }
+  },
+  "resilience": {
+    "offline_mode": true,
+    "auto_recover": true,
+    "watchdog_enabled": true,
+    "restart_on_crash": true,
+    "health_endpoint": "/health",
+    "max_restart_attempts": 5
+  },
+  "scheduling": {
+    "timezone": "local",
+    "active_hours": { "start": "08:00", "end": "22:00" },
+    "sleep_mode": true,
+    "wake_on_sensor": true
+  },
+  "logging": {
+    "level": "info",
+    "local_retention_days": 7,
+    "remote_aggregation": true,
+    "format": "jsonl"
+  }
+}
