@@ -117,6 +117,10 @@ describe('SearchAnalyticsTracker', () => {
         resultCount: 15,
         userSession: 'user-456',
         filters,
+        metadata: {
+          repository: 'tool-interaction-design',
+          sourceId: 'repo-tool-interaction-design',
+        },
       });
 
       const stmt = db.prepare('SELECT * FROM search_queries WHERE id = ?');
@@ -124,6 +128,10 @@ describe('SearchAnalyticsTracker', () => {
 
       expect(result.user_session).toBe('user-456');
       expect(result.filters).toBeTruthy();
+      expect(JSON.parse(result.metadata)).toMatchObject({
+        repository: 'tool-interaction-design',
+        sourceId: 'repo-tool-interaction-design',
+      });
     });
 
     it('should handle missing optional fields gracefully', () => {
@@ -336,6 +344,71 @@ describe('SearchAnalyticsTracker', () => {
 
       expect(metrics.bySearchType).toBeTruthy();
       expect(typeof metrics.bySearchType).toBe('object');
+    });
+  });
+
+  describe('Repository Breakdown', () => {
+    it('aggregates query counts by repository metadata', () => {
+      tracker.trackQuery({
+        query: 'merlin archetype',
+        searchType: 'federated',
+        latency: 90,
+        resultCount: 3,
+        metadata: {
+          repository: 'tool-interaction-design',
+        },
+      });
+      tracker.trackQuery({
+        query: 'agent rituals',
+        searchType: 'federated',
+        latency: 110,
+        resultCount: 2,
+        metadata: {
+          repository: 'tool-interaction-design',
+        },
+      });
+      tracker.trackQuery({
+        query: 'behavior blockchain',
+        searchType: 'federated',
+        latency: 130,
+        resultCount: 1,
+        metadata: {
+          repository: 'behavior-blockchain',
+        },
+      });
+
+      const breakdown = tracker.getRepoBreakdown({ windowDays: 1, limit: 10 });
+
+      expect(breakdown).toHaveLength(2);
+      expect(breakdown[0]).toMatchObject({
+        repo: 'tool-interaction-design',
+        count: 2,
+      });
+      expect(breakdown[1]).toMatchObject({
+        repo: 'behavior-blockchain',
+        count: 1,
+      });
+    });
+
+    it('falls back to repo-like values embedded in filters', () => {
+      tracker.trackQuery({
+        query: 'repo scoped query',
+        searchType: 'hybrid',
+        latency: 85,
+        resultCount: 4,
+        filters: {
+          sourceId: 'repo-alpha',
+        },
+      });
+
+      const breakdown = tracker.getRepoBreakdown({ windowDays: 1, limit: 10 });
+
+      expect(breakdown).toEqual([
+        expect.objectContaining({
+          repo: 'repo-alpha',
+          count: 1,
+        }),
+      ]);
     });
   });
 

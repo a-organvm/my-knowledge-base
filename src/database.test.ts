@@ -96,4 +96,71 @@ describe('KnowledgeDatabase helpers', () => {
     expect(edges.length).toBeGreaterThan(0);
     expect(edges[0]).toMatchObject({ fromUnit: 'unit-1', toUnit: 'unit-2' });
   });
+
+  it('searchTextPaginated falls back to document URLs when chunk text does not contain the query', () => {
+    db.insertDocument({
+      id: 'doc-url-1',
+      title: 'Behavior Blockchain Research',
+      content: 'Notes about habit contracts and commitment mechanisms.',
+      created: new Date('2026-01-04T00:00:00.000Z'),
+      modified: new Date('2026-01-04T00:00:00.000Z'),
+      url: 'https://stickk.com/research/behavior-blockchain',
+      format: 'html',
+      metadata: {
+        sourceId: 'research-web',
+        originalFilename: 'stickk-research.html',
+      },
+    });
+
+    db.insertAtomicUnit({
+      id: 'unit-url-1',
+      type: 'reference',
+      title: 'Commitment mechanisms overview',
+      content: 'Summarizes the research findings without spelling out the site URL.',
+      context: 'From document: Behavior Blockchain Research',
+      category: 'research',
+      tags: ['research'],
+      keywords: ['commitment', 'behavior'],
+      relatedUnits: [],
+      timestamp: new Date('2026-01-04T00:00:00.000Z'),
+      documentId: 'doc-url-1',
+    });
+
+    const result = db.searchTextPaginated('stickk.com', 0, 10);
+
+    expect(result.total).toBeGreaterThan(0);
+    expect(result.results.map((unit) => unit.id)).toContain('unit-url-1');
+  });
+
+  it('searchText can match document metadata such as original filenames', () => {
+    db.insertDocument({
+      id: 'doc-meta-1',
+      title: 'Merlin Archetype',
+      content: 'Locates the merlin archetype discussion in a design note.',
+      created: new Date('2026-01-05T00:00:00.000Z'),
+      modified: new Date('2026-01-05T00:00:00.000Z'),
+      format: 'markdown',
+      metadata: {
+        originalFilename: 'tool-interaction-design/phase-2/merlin-archetype.md',
+      },
+    });
+
+    db.insertAtomicUnit({
+      id: 'unit-meta-1',
+      type: 'insight',
+      title: 'Merlin Archetype Notes',
+      content: 'The archetype appears in the document body.',
+      context: 'From document: Merlin Archetype',
+      category: 'design',
+      tags: ['design'],
+      keywords: ['merlin', 'archetype'],
+      relatedUnits: [],
+      timestamp: new Date('2026-01-05T00:00:00.000Z'),
+      documentId: 'doc-meta-1',
+    });
+
+    const result = db.searchText('tool-interaction-design');
+
+    expect(result.map((unit) => unit.id)).toContain('unit-meta-1');
+  });
 });

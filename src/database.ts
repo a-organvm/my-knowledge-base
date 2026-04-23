@@ -595,16 +595,7 @@ export class KnowledgeDatabase {
   }
 
   searchText(query: string, limit: number = 10): AtomicUnit[] {
-    const stmt = this.db.prepare(`
-      SELECT u.* FROM atomic_units u
-      JOIN units_fts ON u.rowid = units_fts.rowid
-      WHERE units_fts MATCH ?
-      ORDER BY rank
-      LIMIT ?
-    `);
-
-    const rows = stmt.all(query, limit) as any[];
-    return this.rowsToAtomicUnits(rows);
+    return this.searchTextPaginated(query, 0, limit).results;
   }
 
   /**
@@ -1271,22 +1262,66 @@ export class KnowledgeDatabase {
       LIMIT ? OFFSET ?
     `);
 
-    const countResult = countStmt.get(query) as { count: number };
+    let countResult: { count: number } | undefined;
+    try {
+      countResult = countStmt.get(query) as { count: number };
+    } catch {
+      countResult = { count: 0 };
+    }
+
     if (countResult.count === 0) {
       const searchTerm = `%${query}%`;
       const fallbackCountStmt = this.db.prepare(`
-        SELECT COUNT(*) as count FROM atomic_units
-        WHERE title LIKE ? OR content LIKE ?
+        SELECT COUNT(*) as count
+        FROM atomic_units u
+        LEFT JOIN documents d ON d.id = u.document_id
+        WHERE
+          u.title LIKE ? OR
+          u.content LIKE ? OR
+          u.context LIKE ? OR
+          d.title LIKE ? OR
+          d.content LIKE ? OR
+          d.url LIKE ? OR
+          d.metadata LIKE ?
       `);
       const fallbackRowsStmt = this.db.prepare(`
-        SELECT * FROM atomic_units
-        WHERE title LIKE ? OR content LIKE ?
-        ORDER BY created DESC
+        SELECT u.*
+        FROM atomic_units u
+        LEFT JOIN documents d ON d.id = u.document_id
+        WHERE
+          u.title LIKE ? OR
+          u.content LIKE ? OR
+          u.context LIKE ? OR
+          d.title LIKE ? OR
+          d.content LIKE ? OR
+          d.url LIKE ? OR
+          d.metadata LIKE ?
+        ORDER BY
+          CASE
+            WHEN d.url LIKE ? THEN 0
+            WHEN d.title LIKE ? THEN 1
+            WHEN u.title LIKE ? THEN 2
+            WHEN d.metadata LIKE ? THEN 3
+            ELSE 4
+          END,
+          u.created DESC
         LIMIT ? OFFSET ?
       `);
 
-      const fallbackCount = fallbackCountStmt.get(searchTerm, searchTerm) as { count: number };
+      const fallbackParams = [
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+        searchTerm,
+      ];
+      const fallbackCount = fallbackCountStmt.get(...fallbackParams) as { count: number };
       const fallbackRows = fallbackRowsStmt.all(
+        ...fallbackParams,
+        searchTerm,
+        searchTerm,
         searchTerm,
         searchTerm,
         limit,
@@ -1299,7 +1334,15 @@ export class KnowledgeDatabase {
       };
     }
 
-    const rows = searchStmt.all(query, limit, offset) as any[];
+    let rows: any[];
+    try {
+      rows = searchStmt.all(query, limit, offset) as any[];
+    } catch {
+      return {
+        results: [],
+        total: 0,
+      };
+    }
 
     return {
       results: this.rowsToAtomicUnits(rows),

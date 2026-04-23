@@ -132,6 +132,22 @@ describe('Federation API Endpoints', () => {
     expect(searchResponse.body.data.length).toBeGreaterThan(0);
     expect(searchResponse.body.data.some((entry: any) => entry.path.includes('guide.md'))).toBe(true);
     expect(typeof searchResponse.body.data[0].score).toBe('number');
+
+    const analyticsResponse = await request(app)
+      .get('/api/search/analytics')
+      .query({ period: '1day', limit: 10 })
+      .expect(200);
+
+    expect(analyticsResponse.body.success).toBe(true);
+    expect(analyticsResponse.body.data.searchTypeStats.federated.count).toBeGreaterThan(0);
+    expect(analyticsResponse.body.data.repoBreakdown).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          repo: 'source-docs',
+          count: 1,
+        }),
+      ])
+    );
   });
 
   it('cancels queued or running jobs', async () => {

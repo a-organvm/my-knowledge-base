@@ -10,7 +10,7 @@ export interface SearchQuery {
   id: string;
   query: string;
   normalizedQuery: string;
-  searchType: 'fts' | 'semantic' | 'hybrid';
+  searchType: 'fts' | 'semantic' | 'hybrid' | 'federated';
   timestamp: string;
   latencyMs: number;
   resultCount: number;
@@ -18,6 +18,75 @@ export interface SearchQuery {
   filters?: string;
   clickedResult?: string;
   metadata?: string;
+}
+
+function parseJsonRecord(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function firstString(values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function extractRepoFromFilters(filters: unknown): string | undefined {
+  if (!filters) return undefined;
+
+  if (Array.isArray(filters)) {
+    for (const entry of filters) {
+      if (!entry || typeof entry !== 'object') continue;
+      const record = entry as Record<string, unknown>;
+      const field = typeof record.field === 'string' ? record.field.trim().toLowerCase() : '';
+      if (['repo', 'repository', 'source', 'sourceid', 'sourcename'].includes(field)) {
+        const value = firstString([record.value]);
+        if (value) return value;
+      }
+    }
+    return undefined;
+  }
+
+  if (typeof filters === 'object') {
+    const record = filters as Record<string, unknown>;
+    return firstString([
+      record.repository,
+      record.repo,
+      record.repoName,
+      record.sourceName,
+      record.sourceId,
+      record.source,
+    ]);
+  }
+
+  return undefined;
+}
+
+function extractRepositoryLabel(row: { metadata: string | null; filters: string | null }): string | undefined {
+  const metadata = parseJsonRecord(row.metadata);
+  const metadataRepo = firstString([
+    metadata.repository,
+    metadata.repo,
+    metadata.repoName,
+    metadata.sourceName,
+    metadata.sourceId,
+  ]);
+  if (metadataRepo) {
+    return metadataRepo;
+  }
+
+  const filters = parseJsonRecord(row.filters);
+  return extractRepoFromFilters(filters);
 }
 
 /**
@@ -29,6 +98,30 @@ export class SearchAnalyticsTracker {
   constructor(dbPathOrInstance: string | Database.Database = './db/knowledge.db') {
     this.db =
       typeof dbPathOrInstance === 'string' ? new Database(dbPathOrInstance) : dbPathOrInstance;
+    this.ensureMetadataColumn();
+  }
+
+  private hasSearchQueryColumn(columnName: string): boolean {
+    try {
+      const columns = this.db.prepare('PRAGMA table_info(search_queries)').all() as Array<{ name: string }>;
+      return columns.some((column) => column.name === columnName);
+    } catch {
+      return false;
+    }
+  }
+
+  private ensureMetadataColumn(): void {
+    if (this.hasSearchQueryColumn('metadata')) {
+      return;
+    }
+
+    try {
+      this.db.exec('ALTER TABLE search_queries ADD COLUMN metadata TEXT');
+    } catch (error) {
+      logger.debug('Search analytics metadata column already available or could not be added', {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   /**
@@ -36,12 +129,13 @@ export class SearchAnalyticsTracker {
    */
   trackQuery(options: {
     query: string;
-    searchType: 'fts' | 'semantic' | 'hybrid';
+    searchType: 'fts' | 'semantic' | 'hybrid' | 'federated';
     latencyMs?: number;
     latency?: number;
     resultCount?: number;
     userSession?: string;
     filters?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }): string | null {
     try {
       const normalized = options.query
@@ -54,8 +148,8 @@ export class SearchAnalyticsTracker {
 
       const stmt = this.db.prepare(`
         INSERT INTO search_queries
-        (id, query, normalized_query, search_type, timestamp, latency_ms, result_count, user_session, filters)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (id, query, normalized_query, search_type, timestamp, latency_ms, result_count, user_session, filters, metadata)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       stmt.run(
@@ -67,7 +161,8 @@ export class SearchAnalyticsTracker {
         latencyMs,
         resultCount,
         options.userSession || null,
-        options.filters ? JSON.stringify(options.filters) : null
+        options.filters ? JSON.stringify(options.filters) : null,
+        options.metadata ? JSON.stringify(options.metadata) : null,
       );
 
       logger.debug('Tracked search: ' + options.searchType + ' query: ' + options.query);
@@ -205,6 +300,60 @@ export class SearchAnalyticsTracker {
         avgResults: 0,
         byType: {}
       };
+    }
+  }
+
+  getRepoBreakdown(options: { windowDays?: number; limit?: number } = {}): Array<{
+    repo: string;
+    count: number;
+    avgLatency: number;
+    avgResults: number;
+  }> {
+    try {
+      const windowDays = options.windowDays ?? 7;
+      const limit = options.limit ?? 20;
+      const minDate = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+      const rows = this.db
+        .prepare(`
+          SELECT metadata, filters, latency_ms, result_count
+          FROM search_queries
+          WHERE timestamp >= ?
+        `)
+        .all(minDate) as Array<{
+          metadata: string | null;
+          filters: string | null;
+          latency_ms: number | null;
+          result_count: number | null;
+        }>;
+
+      const byRepo = new Map<string, { count: number; latencyTotal: number; resultTotal: number }>();
+      for (const row of rows) {
+        const repo = extractRepositoryLabel(row);
+        if (!repo) continue;
+
+        const current = byRepo.get(repo) ?? {
+          count: 0,
+          latencyTotal: 0,
+          resultTotal: 0,
+        };
+        current.count += 1;
+        current.latencyTotal += row.latency_ms ?? 0;
+        current.resultTotal += row.result_count ?? 0;
+        byRepo.set(repo, current);
+      }
+
+      return Array.from(byRepo.entries())
+        .map(([repo, stats]) => ({
+          repo,
+          count: stats.count,
+          avgLatency: stats.count > 0 ? stats.latencyTotal / stats.count : 0,
+          avgResults: stats.count > 0 ? stats.resultTotal / stats.count : 0,
+        }))
+        .sort((a, b) => b.count - a.count || a.repo.localeCompare(b.repo))
+        .slice(0, limit);
+    } catch (error) {
+      logger.error('Failed to get repo breakdown: ' + error);
+      return [];
     }
   }
 

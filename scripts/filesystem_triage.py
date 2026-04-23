@@ -129,6 +129,24 @@ CREATION_SIGNALS = [
     "template", "boilerplate", "starter",
 ]
 
+# Well-known library/framework names that look like filenames but are not.
+# These are false positives from bare_file regex matching "Name.js" etc.
+FALSE_POSITIVE_BASENAMES = {
+    "node.js", "next.js", "three.js", "tone.js", "p5.js", "d3.js",
+    "vue.js", "react.js", "angular.js", "ember.js", "backbone.js",
+    "express.js", "nest.js", "nuxt.js", "deno.js", "bun.js",
+    "electron.js", "svelte.js", "remix.js", "astro.js",
+    "chart.js", "anime.js", "gsap.js", "howler.js", "paper.js",
+    "fabric.js", "matter.js", "cannon.js", "pixi.js", "phaser.js",
+    "socket.io", "webpack.js", "vite.js", "rollup.js", "esbuild.js",
+    "jquery.js", "lodash.js", "moment.js", "dayjs.js", "rxjs.js",
+    "supabase.js", "firebase.js", "prisma.js",
+    "tailwind.css", "bootstrap.css", "normalize.css",
+    # Common non-file patterns
+    "package.json", "tsconfig.json", "readme.md", "license.md",
+    "changelog.md", "contributing.md",
+}
+
 
 def has_creation_intent(content: str) -> bool:
     """Return True if the prompt content signals file/artifact creation."""
@@ -187,6 +205,25 @@ def extract_file_refs(content: str) -> list[dict]:
         basename = os.path.basename(ref.rstrip("/"))
         key = basename.lower()
         if key and key not in seen and len(basename) > 2:
+            # Skip false positives: library names, URLs, version strings
+            if key in FALSE_POSITIVE_BASENAMES:
+                return
+            # Skip anything that looks like a URL fragment
+            if "http" in ref.lower() or "www." in ref.lower():
+                return
+            # Skip version-like patterns (e.g., "v1.2.js")
+            if re.match(r"^v?\d+\.\d+", basename):
+                return
+            # Skip refs that look like web URL paths (domain TLD segments)
+            tld_segments = {"com", "org", "net", "io", "gov", "edu", "dev",
+                            "co", "app", "mnt", "www", "http", "https"}
+            parts = ref.split("/")
+            if len(parts) > 1 and parts[0].lower() in tld_segments:
+                return
+            # Also skip .html refs with domain-like parent directories
+            if ".html" in key:
+                if any("." in p and not p.endswith(".html") for p in parts[:-1]):
+                    return
             seen.add(key)
             refs.append({
                 "ref": ref,

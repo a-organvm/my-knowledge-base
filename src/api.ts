@@ -5,7 +5,7 @@
 
 import express, { Router, Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'crypto';
-import { resolve } from 'path';
+import { basename, resolve } from 'path';
 import { KnowledgeDatabase } from './database.js';
 import { logger, AppError } from './logger.js';
 import { AtomicUnit, EntityRelationship } from './types.js';
@@ -17,6 +17,7 @@ import { SearchAnalyticsTracker } from './analytics/search-analytics.js';
 import { QuerySuggestionEngine } from './analytics/query-suggestions.js';
 import { FilterPresetManager } from './filter-presets.js';
 import { HybridSearch, HybridSearchResult } from './hybrid-search.js';
+import { SearchAnswerer } from './search-answerer.js';
 import { createIntelligenceRouter } from './api-intelligence.js';
 import { AuditLogger } from './audit-log.js';
 import { FederatedIndexer } from './federation/indexer.js';
@@ -129,6 +130,7 @@ export function createApiRouter(db: KnowledgeDatabase): Router {
     process.env.KB_SEARCH_HYBRID_POLICY ?? appConfig.search?.hybridPolicy,
     'degrade'
   );
+  const searchAnswerer = new SearchAnswerer(dbHandle);
   const parseBooleanFlag = (value: string | undefined, fallback: boolean): boolean => {
     if (value === undefined) return fallback;
     const normalized = value.trim().toLowerCase();
@@ -205,6 +207,32 @@ export function createApiRouter(db: KnowledgeDatabase): Router {
         rootPath: normalized,
       });
     }
+  };
+
+  const deriveRepositoryLabel = (sourceId?: string): string | undefined => {
+    if (!sourceId) {
+      return undefined;
+    }
+
+    const source = federatedSourceRegistry.getSourceById(sourceId);
+    if (!source) {
+      return sourceId;
+    }
+
+    const metadata = source.metadata ?? {};
+    if (typeof metadata.repository === 'string' && metadata.repository.trim().length > 0) {
+      return metadata.repository.trim();
+    }
+    if (typeof metadata.repo === 'string' && metadata.repo.trim().length > 0) {
+      return metadata.repo.trim();
+    }
+
+    const rootLabel = basename(source.rootPath.trim());
+    if (rootLabel.length > 0 && rootLabel !== '.' && rootLabel !== '/') {
+      return rootLabel;
+    }
+
+    return source.name;
   };
 
   const runFtsSearch = (
@@ -773,6 +801,30 @@ export function createApiRouter(db: KnowledgeDatabase): Router {
       } as ApiSuccessResponse<any>);
 
       logger.debug(`Suggestions: "${prefix}", count=${suggestions.length}`);
+    })
+  );
+
+  /**
+   * GET /api/search/answer
+   * Deterministic evidence-backed answers from indexed documents and federated files.
+   */
+  router.get(
+    '/search/answer',
+    asyncHandler(async (req: Request, res: Response) => {
+      const queryParam = req.query.q;
+      if (queryParam === undefined || String(queryParam).trim().length === 0) {
+        throw new AppError('Search query is required', 'MISSING_QUERY', 400);
+      }
+
+      const query = String(queryParam);
+      const limit = parseIntParam(req.query.limit as string | undefined, 'limit', 5, 1, 10);
+      const answer = searchAnswerer.answer(query, { limit });
+
+      res.json({
+        success: true,
+        data: answer,
+        timestamp: new Date().toISOString(),
+      } as ApiSuccessResponse<any>);
     })
   );
 
@@ -2142,12 +2194,14 @@ export function createApiRouter(db: KnowledgeDatabase): Router {
       const days = period === '30days' ? 30 : period === '7days' ? 7 : 1;
       const stats = analyticsTracker.getStatistics(days);
       const popularQueries = analyticsTracker.getPopularQueries({ limit, windowDays: days });
+      const repoBreakdown = analyticsTracker.getRepoBreakdown({ limit, windowDays: days });
 
       res.json({
         success: true,
         data: {
           period,
           popularQueries,
+          repoBreakdown,
           searchTypeStats: stats.byType,
           averageLatency: stats.avgLatency,
           totalQueries: stats.totalQueries,
@@ -2500,6 +2554,7 @@ export function createApiRouter(db: KnowledgeDatabase): Router {
       const limit = parseIntParam(req.query.limit as string | undefined, 'limit', 20, 1, 100);
       const offset = parseIntParam(req.query.offset as string | undefined, 'offset', 0, 0, 100000);
       const query = String(q);
+      const startTime = Date.now();
       const result = federatedSearch.search(query, {
         sourceId,
         mimeType,
@@ -2508,6 +2563,26 @@ export function createApiRouter(db: KnowledgeDatabase): Router {
         modifiedBefore,
         limit,
         offset,
+      });
+
+      analyticsTracker.trackQuery({
+        query,
+        searchType: 'federated',
+        latencyMs: Math.max(1, Date.now() - startTime),
+        resultCount: result.items.length,
+        filters: {
+          sourceId,
+          mimeType,
+          pathPrefix,
+          modifiedAfter,
+          modifiedBefore,
+        },
+        metadata: {
+          repository: deriveRepositoryLabel(sourceId),
+          sourceId,
+          sourceName: sourceId ? federatedSourceRegistry.getSourceById(sourceId)?.name : undefined,
+          pathPrefix,
+        },
       });
 
       res.json({

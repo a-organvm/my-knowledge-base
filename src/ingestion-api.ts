@@ -48,6 +48,15 @@ function persistUnits(db: KnowledgeDatabase, units: AtomicUnit[]): AtomicUnit[] 
   return units;
 }
 
+function persistDocumentWithUnits(
+  db: KnowledgeDatabase,
+  doc: KnowledgeDocument,
+  units: AtomicUnit[],
+): AtomicUnit[] {
+  db.insertDocument(doc);
+  return persistUnits(db, units);
+}
+
 /**
  * Build a KnowledgeDocument from raw text content
  */
@@ -56,6 +65,7 @@ function buildDocument(
   content: string,
   format: KnowledgeDocument['format'],
   filename?: string,
+  metadataOverrides: Record<string, unknown> = {},
 ): KnowledgeDocument {
   return {
     id: randomUUID(),
@@ -68,6 +78,7 @@ function buildDocument(
       sourceId: 'web-upload',
       sourceName: 'Web Upload',
       originalFilename: filename,
+      ...metadataOverrides,
     },
   };
 }
@@ -158,10 +169,10 @@ export function createIngestionRouter(db: KnowledgeDatabase): Router {
           const title = file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
           const doc = buildDocument(title, textContent, format, file.originalname);
           units = atomizer.atomizeDocument(doc);
+          persistDocumentWithUnits(db, doc, units);
+        } else {
+          persistUnits(db, units);
         }
-
-        // Persist and collect results
-        persistUnits(db, units);
         results.push({
           filename: file.originalname,
           unitCount: units.length,
@@ -236,10 +247,15 @@ export function createIngestionRouter(db: KnowledgeDatabase): Router {
       const textContent = article.textContent || '';
       const title = article.title || new URL(url).hostname;
 
-      const doc = buildDocument(title, textContent, 'html', url);
+      const doc = buildDocument(title, textContent, 'html', url, {
+        sourceId: 'web-url',
+        sourceName: 'Web URL',
+        sourceUrl: url,
+        originalUrl: url,
+      });
       doc.url = url;
       const units = atomizer.atomizeDocument(doc);
-      persistUnits(db, units);
+      persistDocumentWithUnits(db, doc, units);
 
       res.status(201).json({
         success: true,
@@ -286,15 +302,16 @@ export function createIngestionRouter(db: KnowledgeDatabase): Router {
           type: type || 'reference',
           category: 'general',
           timestamp: new Date(),
-          context: '',
+          context: `From document: ${title}`,
           tags: [],
           keywords: [],
+          documentId: doc.id,
           relatedUnits: [],
         } as AtomicUnit;
         units.push(unit);
       }
 
-      persistUnits(db, units);
+      persistDocumentWithUnits(db, doc, units);
 
       res.status(201).json({
         success: true,
@@ -371,9 +388,10 @@ export function createIngestionRouter(db: KnowledgeDatabase): Router {
             const title = file.originalname.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
             const doc = buildDocument(title, textContent, format, file.originalname);
             units = atomizer.atomizeDocument(doc);
+            persistDocumentWithUnits(db, doc, units);
+          } else {
+            persistUnits(db, units);
           }
-
-          persistUnits(db, units);
           totalUnits += units.length;
           results.push({ filename: file.originalname, unitCount: units.length });
         } catch (err) {

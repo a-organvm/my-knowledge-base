@@ -10,6 +10,10 @@ structure to classify as:
   UNABLE_TO_VERIFY — cannot determine from filesystem alone
   ABANDONED       — context no longer exists (e.g. Docker uninstalled)
 
+Conservative: VERIFIED_DONE only with concrete filesystem evidence.
+VERIFIED_OPEN only when we can confirm the target does not exist.
+Everything ambiguous goes to UNABLE_TO_VERIFY.
+
 Results written to ~/Workspace/organvm/my-knowledge-base/db/review-results.db
 """
 
@@ -32,34 +36,71 @@ ATOMS_FILE = WORKSPACE / "organvm/organvm-corpvs-testamentvm/data/atoms/prompt-a
 DB_PATH = WORKSPACE / "organvm/my-knowledge-base/db/review-results.db"
 
 # Pre-index workspace structure once
-REPO_DIRS: set[str] = set()
-ALL_DIRS: set[str] = set()
-ALL_FILES_BY_NAME: dict[str, list[str]] = {}  # basename -> [full paths]
+REPO_DIRS: dict[str, str] = {}  # lowercased name -> actual path
+ALL_FILES_DEEP: dict[str, list[str]] = {}  # basename -> [full paths]
 GIT_REPOS: list[Path] = []
+GIT_LOG_CACHE: dict[str, str] = {}  # repo path -> concatenated log messages
 
-# Action verb categories
-FILE_CREATE_VERBS = {
-    "create", "write", "generate", "build", "scaffold", "add", "make",
-    "draft", "produce", "output", "export", "save", "dump", "render",
+# Words that are repo names but too common in English to use as evidence.
+# Err heavily on the side of exclusion — a false positive VERIFIED_DONE
+# is worse than a false negative (UNABLE_TO_VERIFY).
+AMBIGUOUS_REPO_NAMES = {
+    "skills", "mesh", "tests", "config", "docs", "scripts", "lib",
+    "data", "web", "apps", "logs", "raw", "intake", "content",
+    "src", "dist", "build", "assets", "public", "private", "core",
+    "tools", "utils", "agent", "engine", "system", "schema",
+    "analytics", "community", "reading", "commerce", "portfolio",
+    "scale", "growth", "auto", "universal", "adaptive", "nexus",
+    "classroom", "collective", "announcement", "benchmark",
+    "templates", "observatory", "contrib", "python", "commands",
+    "padavano", "applications", "seeds", "packages", "backups",
+    "performance", "node_modules", "atomized", "ecosystem",
+    "cognitive", "production", "diagnostic", "documents",
+    "manifest", "network", "response", "contribute", "contributing",
+    "changelog",
 }
-GIT_VERBS = {
-    "commit", "push", "merge", "deploy", "publish", "release", "tag",
-    "pr", "pull request",
+
+# Minimum repo name length to consider as evidence
+MIN_REPO_NAME_LEN = 12
+
+# Generic filenames that exist in most repos and prove nothing
+GENERIC_FILENAMES = {
+    "readme.md", "changelog.md", "license", "license.md", "license.txt",
+    "contributing.md", "package.json", "package-lock.json", "tsconfig.json",
+    "pyproject.toml", "setup.py", "setup.cfg", "cargo.toml",
+    ".gitignore", ".editorconfig", ".prettierrc", ".eslintrc.js",
+    "manifest.yaml", "seed.yaml", "claude.md", "agents.md", "gemini.md",
+    "justfile", "makefile", "dockerfile", "docker-compose.yml",
+    "vitest.config.ts", "jest.config.js", "pytest.ini",
+    "index.ts", "index.js", "main.py", "main.go", "main.rs",
+    "app.py", "app.ts", "app.js", "server.ts", "server.js",
+    "types.ts", "utils.ts", "config.ts", "config.yaml", "config.json",
+    "init.lua", "tmux.conf", "starship.toml",
+    "roadmap.md", "todo.md", "notes.md", "plan.md", "overview.md",
+    "map.md", "inbox.md", "response.json", "catalog.json", "xref.json",
+    "node.js", "chart.js", "content.js",  # common libraries, not user files
+    "diagnostic.sh", "export.sh", "ingest.sh", "search.sh", "purge.sh",
+    "capture.sh", "link_to_4jp.sh",  # generic script names
+    "labels.yml", "ci.yml",  # generic CI config
+    "v1.md", "v2.md", "v1.1.md", "pattern.md", "framework.md",
+    "pip.conf",  # system config
+    "index.md", "index.html", "index.css",  # generic index files
+    "security.md", "governance_analysis.md",
+    "bug_report.yml", "feature_request.yml",
 }
-SCRIPT_VERBS = {
-    "script", "function", "implement", "code", "program", "automate",
-}
+
 DOCKER_TERMS = {
     "docker", "dockerfile", "docker-compose", "container", "containerize",
-    "docker compose", "docker build", "docker run",
+    "docker compose", "docker build", "docker run", "docker image",
+    "dockerize", "docker network", "docker volume",
 }
-ABANDONED_TERMS = DOCKER_TERMS  # Docker uninstalled 2026-04-18
 
-# Prompt types that are inherently conversational (not filesystem-verifiable)
-CONVERSATIONAL_TYPES = {"question", "review", "research"}
-
-# Domains where output is rarely a file
-CONVERSATIONAL_DOMAINS = {"email", "career", "creative", "content"}
+# URL domain patterns to filter out of filename extraction
+URL_DOMAINS = re.compile(
+    r'(?:www|http|https|ftp|mailto|tel|ssh|git)\b|'
+    r'\.(?:com|org|net|edu|gov|io|co|uk|us|ca|au|de|fr|jp|ru|br|in)\b|'
+    r'(?:nlm|nih|ncbi|census|eeoc|purdue|gamblingcommission|instructure|mdc|lumen)\b'
+)
 
 
 def log(msg: str) -> None:
@@ -72,86 +113,169 @@ def log(msg: str) -> None:
 
 def index_workspace() -> None:
     """Walk ~/Workspace to build fast lookup structures."""
-    global REPO_DIRS, ALL_DIRS, ALL_FILES_BY_NAME, GIT_REPOS
+    global REPO_DIRS, ALL_FILES_DEEP, GIT_REPOS
 
     log("Indexing workspace...")
     t0 = time.time()
 
-    # Walk up to depth 4 for speed
     for org_dir in WORKSPACE.iterdir():
         if not org_dir.is_dir() or org_dir.name.startswith("."):
             continue
-        ALL_DIRS.add(org_dir.name.lower())
         for child in org_dir.iterdir():
             if not child.is_dir():
-                # Top-level files
-                name = child.name.lower()
-                ALL_FILES_BY_NAME.setdefault(name, []).append(str(child))
                 continue
             repo_name = child.name.lower()
-            REPO_DIRS.add(repo_name)
-            ALL_DIRS.add(repo_name)
+            REPO_DIRS[repo_name] = str(child)
             if (child / ".git").is_dir():
                 GIT_REPOS.append(child)
-            # Index files one level deep in each repo
+            # Index files two levels deep in each repo
             try:
                 for f in child.iterdir():
                     fname = f.name.lower()
-                    ALL_FILES_BY_NAME.setdefault(fname, []).append(str(f))
-            except PermissionError:
+                    if not fname.startswith("."):
+                        ALL_FILES_DEEP.setdefault(fname, []).append(str(f))
+                    if f.is_dir() and not fname.startswith("."):
+                        try:
+                            for ff in f.iterdir():
+                                ffname = ff.name.lower()
+                                if not ffname.startswith("."):
+                                    ALL_FILES_DEEP.setdefault(ffname, []).append(str(ff))
+                        except (PermissionError, OSError):
+                            pass
+            except (PermissionError, OSError):
                 pass
 
-    # Also index ~/Workspace top-level files
-    for f in WORKSPACE.iterdir():
-        if f.is_file():
-            ALL_FILES_BY_NAME.setdefault(f.name.lower(), []).append(str(f))
-
     elapsed = time.time() - t0
-    log(f"Indexed {len(REPO_DIRS)} repos, {len(ALL_FILES_BY_NAME)} unique filenames in {elapsed:.1f}s")
+    log(f"Indexed {len(REPO_DIRS)} repos, {len(ALL_FILES_DEEP)} unique filenames in {elapsed:.1f}s")
+
+
+def index_git_logs() -> None:
+    """Pre-fetch git log subjects from all repos (batch, fast)."""
+    global GIT_LOG_CACHE
+    log(f"Indexing git logs from {len(GIT_REPOS)} repos...")
+    t0 = time.time()
+    for repo in GIT_REPOS:
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(repo), "log", "--oneline", "-50", "--format=%s"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0:
+                GIT_LOG_CACHE[str(repo)] = result.stdout.lower()
+        except (subprocess.TimeoutExpired, OSError):
+            pass
+    elapsed = time.time() - t0
+    log(f"Indexed git logs in {elapsed:.1f}s ({len(GIT_LOG_CACHE)} repos with history)")
 
 
 # ---------------------------------------------------------------------------
 # Phase 2: Extract action signals from prompt content
 # ---------------------------------------------------------------------------
 
+def extract_filenames_strict(content: str) -> list[str]:
+    """Extract filenames from content, filtering out URL fragments."""
+    content_lower = content.lower()
+    # Match filename patterns
+    candidates = re.findall(
+        r'(?:^|[\s"\'(,])([a-z][\w\-./]*\.(?:py|js|ts|tsx|jsx|sh|bash|zsh|yaml|yml|json|toml|md|html|css|go|rs|sql|env|txt|cfg|conf|ini|xml|plist|tmpl))\b',
+        content_lower,
+    )
+    # Filter out URL fragments
+    filtered = []
+    for c in candidates:
+        # Skip if it looks like a URL domain component
+        if URL_DOMAINS.search(c):
+            continue
+        # Skip if it's a bare extension (.md, .py etc.)
+        basename = os.path.basename(c)
+        if len(basename) <= 4:  # e.g. "a.py"
+            continue
+        # Skip paths that contain obvious URL components
+        if "//" in c or "http" in c:
+            continue
+        filtered.append(c)
+    return list(set(filtered))
+
+
+def extract_explicit_repo_refs(content: str) -> list[str]:
+    """Extract explicit GitHub-style repo references (org/repo),
+    filtering out URL paths."""
+    # Only match patterns that look like GitHub refs (letters, numbers, hyphens)
+    candidates = re.findall(r'(?:^|[\s(])([A-Za-z0-9][\w-]*/[A-Za-z0-9][\w-]*)', content)
+    filtered = []
+    for c in candidates:
+        parts = c.split("/")
+        # Skip if either part is too short or looks like a URL path
+        if len(parts[0]) < 3 or len(parts[1]) < 3:
+            continue
+        # Skip common URL path patterns
+        if parts[0].lower() in ("http", "https", "www", "ftp", "ssh", "git"):
+            continue
+        if parts[1].lower() in ("html", "css", "js", "img", "images", "assets", "files", "pages"):
+            continue
+        filtered.append(c)
+    return list(set(filtered))
+
+
 def extract_action_signals(content: str) -> dict:
     """Extract verbs, nouns, filenames, repo names from prompt content."""
     content_lower = content.lower()
     words = set(re.findall(r'[a-z_\-]+', content_lower))
 
-    signals = {
-        "has_file_create_verb": bool(words & FILE_CREATE_VERBS),
-        "has_git_verb": bool(words & GIT_VERBS),
-        "has_script_verb": bool(words & SCRIPT_VERBS),
-        "has_docker_term": bool(words & DOCKER_TERMS),
-        "has_abandoned_term": bool(words & ABANDONED_TERMS),
-        "mentioned_filenames": [],
-        "mentioned_repos": [],
-        "mentioned_extensions": [],
-        "is_html_content": "<html" in content_lower or "<div" in content_lower or "<p " in content_lower,
-        "is_email_content": any(x in content_lower for x in ["@", "dear ", "hi ", "hello ", "subject:", "from:", "to:"]),
-        "is_revision": any(x in content_lower for x in ["revise", "revision", "update", "modify", "edit", "rewrite"]),
-        "is_conversational": any(x in content_lower for x in [
-            "explain", "what is", "how do", "can you", "tell me", "describe",
-            "summarize", "compare", "analyze", "help me understand",
-            "respond to", "reply to", "answer", "opinion",
-        ]),
+    file_create_verbs = {
+        "create", "write", "generate", "build", "scaffold", "add", "make",
+        "draft", "produce", "output", "export", "save", "dump", "render",
+    }
+    git_verbs = {
+        "commit", "push", "merge", "deploy", "publish", "release", "tag",
+    }
+    script_verbs = {
+        "script", "function", "implement", "automate",
     }
 
-    # Extract filenames (anything with a file extension pattern)
-    filenames = re.findall(
-        r'[\w\-./]+\.(?:py|js|ts|tsx|jsx|sh|bash|zsh|yaml|yml|json|toml|md|html|css|go|rs|sql|env|txt|cfg|conf|ini|xml|plist|tmpl)',
-        content_lower,
-    )
-    signals["mentioned_filenames"] = list(set(filenames))
-
-    # Extract potential repo names (org/repo patterns)
-    repo_patterns = re.findall(r'[\w\-]+/[\w\-]+', content)
-    signals["mentioned_repos"] = list(set(repo_patterns))
-
-    # Extract file extensions mentioned
-    exts = re.findall(r'\.\w{1,5}\b', content_lower)
-    signals["mentioned_extensions"] = list(set(exts))
+    signals = {
+        "has_file_create_verb": bool(words & file_create_verbs),
+        "has_git_verb": bool(words & git_verbs),
+        "has_script_verb": bool(words & script_verbs),
+        "has_docker_term": bool(words & DOCKER_TERMS),
+        "mentioned_filenames": extract_filenames_strict(content),
+        "mentioned_repos": extract_explicit_repo_refs(content),
+        "is_html_content": bool(re.search(r'<(?:html|div|p|span|img|table|h[1-6])\b', content_lower)),
+        "is_email_content": bool(re.search(
+            r'(?:subject:|from:|to:|dear\s|hi\s\w+,|hello\s\w+,|@\w+\.\w+)', content_lower
+        )),
+        "is_revision": bool(re.search(
+            r'\b(?:revise|revision|rewrite|rework|redo|refine)\b', content_lower
+        )),
+        "is_conversational": bool(re.search(
+            r'\b(?:explain|what\s+is|how\s+do|can\s+you|tell\s+me|describe|help\s+me\s+understand)\b',
+            content_lower,
+        )),
+        "is_curriculum_lms": bool(re.search(
+            r'\b(?:canvas|lms|module\s+\d|syllabus|assignment|discussion|rubric|instructure|eng\s+10[12]|enc\s+\d{4})\b',
+            content_lower,
+        )),
+        "is_resume_cover_letter": bool(re.search(
+            r'\b(?:resume|cover\s+letter|job\s+description|professional\s+summary|linkedin|keywords?|skills?\s+list)\b',
+            content_lower,
+        )),
+        "is_letter_legal": bool(re.search(
+            r'\b(?:complaint|grievance|attorney|lawyer|eeoc|discrimination|harassment|termination|discharge)\b',
+            content_lower,
+        )),
+        "is_name_analysis": bool(re.search(
+            r'\b(?:name\s+analysis|name\s+meaning|etymology|hebrew|numerology|gematria)\b',
+            content_lower,
+        )),
+        "is_seo_marketing": bool(re.search(
+            r'\b(?:seo|keyword|merchant\s+cash|business\s+advance|adwords|ppc|landing\s+page)\b',
+            content_lower,
+        )),
+        "is_student_feedback": bool(re.search(
+            r'\b(?:student\s+\d+|next\s+student|grading|feedback|rough\s+draft|essay\s+rubric|peer\s+review)\b',
+            content_lower,
+        )),
+    }
 
     return signals
 
@@ -160,54 +284,115 @@ def extract_action_signals(content: str) -> dict:
 # Phase 3: Reality checks
 # ---------------------------------------------------------------------------
 
-def check_file_exists(filenames: list[str]) -> tuple[bool, str]:
-    """Check if any mentioned filename exists in the workspace."""
+def check_file_exists_strict(filenames: list[str]) -> tuple[bool, str]:
+    """Check if mentioned filenames exist in the workspace.
+    Only matches exact basenames. Filters out generic filenames
+    and node_modules paths that prove nothing about the prompt."""
     for fname in filenames:
         basename = os.path.basename(fname).lower()
-        if basename in ALL_FILES_BY_NAME:
-            return True, ALL_FILES_BY_NAME[basename][0]
-        # Try without path prefix
-        parts = fname.split("/")
-        for part in parts:
-            if part.lower() in ALL_FILES_BY_NAME:
-                return True, ALL_FILES_BY_NAME[part.lower()][0]
+        if basename in GENERIC_FILENAMES:
+            continue
+        if basename in ALL_FILES_DEEP:
+            # Filter out node_modules matches — those are dependencies, not user files
+            real_paths = [p for p in ALL_FILES_DEEP[basename] if "node_modules" not in p]
+            if real_paths:
+                return True, real_paths[0]
     return False, ""
 
 
-def check_repo_exists(repo_refs: list[str]) -> tuple[bool, str]:
-    """Check if mentioned repo names exist in workspace."""
+def check_repo_exists_strict(repo_refs: list[str]) -> tuple[bool, str]:
+    """Check if explicitly mentioned repo (org/name) exists.
+    Requires exact match on the repo name portion — no fuzzy."""
     for ref in repo_refs:
         parts = ref.split("/")
         repo_name = parts[-1].lower()
         if repo_name in REPO_DIRS:
-            return True, repo_name
-        # Fuzzy: check if any repo contains the name
-        for existing in REPO_DIRS:
-            if repo_name in existing or existing in repo_name:
-                return True, existing
+            return True, REPO_DIRS[repo_name]
     return False, ""
 
 
-def check_content_words_in_repos(content: str) -> tuple[bool, str]:
-    """Check if key nouns from content match repo names."""
-    content_lower = content.lower()
-    # Extract significant words (3+ chars, not common)
-    stopwords = {
-        "the", "and", "for", "with", "from", "this", "that", "have", "has",
-        "are", "was", "were", "been", "will", "can", "could", "would", "should",
-        "not", "but", "all", "any", "some", "each", "every", "into", "about",
-        "also", "then", "than", "more", "most", "just", "like", "make", "use",
-        "how", "what", "when", "where", "which", "while", "here", "there",
-        "your", "you", "they", "them", "their", "its", "our", "out",
-        "add", "new", "get", "set", "let", "run", "try", "see", "now",
-        "want", "need", "know", "look", "find", "give", "take", "come",
-        "way", "may", "say", "same", "keep", "using", "please", "okay",
-    }
-    words = set(re.findall(r'[a-z]{4,}', content_lower)) - stopwords
+def check_specific_project_keywords(content: str) -> tuple[bool, str]:
+    """Check if content mentions specific, unambiguous project names.
 
-    for word in words:
-        if word in REPO_DIRS:
-            return True, word
+    Only matches repo names that are:
+    1. Long enough to be distinctive (12+ chars)
+    2. Not common English words
+    3. Contain a double-hyphen (ORGANVM naming convention) OR
+       are compound names unlikely to appear in normal prose
+    4. Appear as distinct terms in the content
+    """
+    content_lower = content.lower()
+
+    for repo_name, repo_path in REPO_DIRS.items():
+        # Skip ambiguous names
+        if repo_name in AMBIGUOUS_REPO_NAMES:
+            continue
+        if len(repo_name) < MIN_REPO_NAME_LEN:
+            continue
+        # Skip single English words even if long
+        if re.match(r'^[a-z]+$', repo_name):
+            continue
+        # Skip contrib forks — these are external repos
+        if repo_name.startswith("contrib--"):
+            continue
+        # Must contain a separator (hyphen, underscore, double-hyphen)
+        if "-" not in repo_name and "_" not in repo_name:
+            continue
+        # Check for exact match in content
+        if repo_name in content_lower:
+            return True, f"{repo_name} ({repo_path})"
+
+    return False, ""
+
+
+def check_git_log_for_keywords(content: str) -> tuple[bool, str]:
+    """Check if any git commit messages match distinctive keywords from content."""
+    content_lower = content.lower()
+
+    # Extract distinctive multi-word phrases (3+ words, 15+ chars)
+    phrases = re.findall(r'[a-z][a-z\s]{15,}', content_lower)
+    if not phrases:
+        return False, ""
+
+    # Only check first 3 phrases to stay fast
+    for phrase in phrases[:3]:
+        phrase_words = phrase.strip().split()
+        if len(phrase_words) < 3:
+            continue
+        # Search for 3-word subsequences in git logs
+        search_term = " ".join(phrase_words[:3])
+        for repo_path, logs in GIT_LOG_CACHE.items():
+            if search_term in logs:
+                repo_name = os.path.basename(repo_path)
+                return True, f"Git log match in {repo_name}: '{search_term}'"
+
+    return False, ""
+
+
+def check_application_pipeline(content: str) -> tuple[bool, str]:
+    """Check if a job application prompt has a matching entry in application-pipeline."""
+    pipeline_dir = WORKSPACE / "4444J99" / "application-pipeline"
+    if not pipeline_dir.is_dir():
+        return False, ""
+
+    # Extract company names or job titles
+    content_lower = content.lower()
+    # Look for company name patterns
+    companies = re.findall(r'(?:at|for|to|from)\s+([A-Z][A-Za-z\s&]+(?:Inc|LLC|Corp|Co)?)', content)
+    if not companies:
+        return False, ""
+
+    # Check if pipeline has matching files
+    try:
+        pipeline_files = [f.name.lower() for f in pipeline_dir.iterdir() if f.is_file()]
+        for company in companies[:3]:
+            company_lower = company.strip().lower()
+            for pf in pipeline_files:
+                if company_lower[:10] in pf:
+                    return True, f"Application pipeline match: {company.strip()}"
+    except (PermissionError, OSError):
+        pass
+
     return False, ""
 
 
@@ -217,79 +402,103 @@ def check_content_words_in_repos(content: str) -> tuple[bool, str]:
 
 def classify_atom(atom: dict) -> tuple[str, str]:
     """
-    Classify a prompt atom as VERIFIED_DONE, VERIFIED_OPEN,
-    UNABLE_TO_VERIFY, or ABANDONED.
-
-    Returns (classification, evidence_note).
+    Classify a prompt atom. Conservative: VERIFIED_DONE only with
+    concrete filesystem evidence. Ambiguous cases -> UNABLE_TO_VERIFY.
     """
     content = atom.get("content", "")
     prompt_type = atom.get("prompt_type", "")
     domain = atom.get("domain", "")
     status = atom.get("status", "")
-    tags = atom.get("tags", [])
     agent = atom.get("agent", "")
 
     signals = extract_action_signals(content)
 
-    # Rule 1: Docker/container prompts -> ABANDONED
+    # ===== ABANDONED (context no longer exists) =====
+
     if signals["has_docker_term"]:
         return "ABANDONED", "Docker uninstalled 2026-04-18"
 
-    # Rule 2: Conversational prompts (questions, explanations, opinions)
-    # These don't produce filesystem artifacts
-    if signals["is_conversational"] and not signals["has_file_create_verb"]:
-        if prompt_type in CONVERSATIONAL_TYPES:
-            return "UNABLE_TO_VERIFY", f"Conversational {prompt_type} — no filesystem artifact expected"
+    # ===== UNABLE_TO_VERIFY: Chat-native output categories =====
+    # These prompt types produce output in the chat, not on disk.
 
-    # Rule 3: Email drafts — not filesystem artifacts
-    if signals["is_email_content"] and domain in ("email", "career", "content"):
-        if not signals["has_file_create_verb"] or signals["is_revision"]:
-            return "UNABLE_TO_VERIFY", "Email/letter draft — output in chat, not filesystem"
+    # Curriculum / LMS content (Canvas pages, module outlines)
+    if signals["is_curriculum_lms"] or signals["is_student_feedback"]:
+        return "UNABLE_TO_VERIFY", "LMS/curriculum content — output in Canvas/chat, not filesystem"
 
-    # Rule 4: HTML content revisions (Canvas/LMS) — not stored locally
+    # HTML content pasted for revision (Canvas modules, pages)
     if signals["is_html_content"] and not signals["mentioned_filenames"]:
         return "UNABLE_TO_VERIFY", "HTML content (likely LMS/Canvas) — not local filesystem"
 
-    # Rule 5: Pure revision/editing of chat content
-    if signals["is_revision"] and not signals["mentioned_filenames"] and not signals["has_file_create_verb"]:
+    # Resume/cover letter/LinkedIn drafts
+    if signals["is_resume_cover_letter"] and not signals["mentioned_filenames"]:
+        return "UNABLE_TO_VERIFY", "Resume/cover letter draft — output in chat, not filesystem"
+
+    # Legal letters and complaints
+    if signals["is_letter_legal"]:
+        return "UNABLE_TO_VERIFY", "Legal/complaint letter — output in chat, not filesystem"
+
+    # Name analysis / creative writing
+    if signals["is_name_analysis"]:
+        return "UNABLE_TO_VERIFY", "Name analysis — output in chat, not filesystem"
+
+    # SEO / marketing keyword lists
+    if signals["is_seo_marketing"]:
+        return "UNABLE_TO_VERIFY", "SEO/marketing content — output in chat, not filesystem"
+
+    # Email drafts
+    if signals["is_email_content"] and domain in ("email", "career", "content", "general"):
+        return "UNABLE_TO_VERIFY", "Email/letter draft — output in chat, not filesystem"
+
+    # Conversational questions
+    if signals["is_conversational"] and prompt_type in ("question", "review", "research"):
+        return "UNABLE_TO_VERIFY", f"Conversational {prompt_type} — no filesystem artifact expected"
+
+    # Pure revision directives without file targets
+    if signals["is_revision"] and not signals["mentioned_filenames"]:
         if prompt_type in ("bug_fix", "directive"):
             return "UNABLE_TO_VERIFY", "Revision directive — output in chat thread, not filesystem"
 
-    # Rule 6: File creation prompts — check if files exist
-    if signals["mentioned_filenames"]:
-        found, path = check_file_exists(signals["mentioned_filenames"])
-        if found:
-            return "VERIFIED_DONE", f"File found: {path}"
-        elif signals["has_file_create_verb"]:
-            return "VERIFIED_OPEN", f"File not found: {signals['mentioned_filenames']}"
+    # ===== VERIFIED checks: concrete filesystem evidence =====
 
-    # Rule 7: Repo references — check existence
+    # Check 1: Explicit filenames mentioned -> look on disk
+    # Only consider if there are a reasonable number of filenames (not a huge dump)
+    mentioned = signals["mentioned_filenames"]
+    if mentioned and len(mentioned) <= 10:
+        found, path = check_file_exists_strict(mentioned)
+        if found:
+            return "VERIFIED_DONE", f"File exists: {path}"
+        elif signals["has_file_create_verb"] and len(mentioned) <= 5:
+            # Only mark VERIFIED_OPEN if we have a small, specific set of targets
+            return "VERIFIED_OPEN", f"File not found: {mentioned}"
+        # Filename mentioned but no create verb — might be referencing existing code
+        # Don't mark VERIFIED_OPEN unless there was intent to create
+
+    # Check 2: Explicit org/repo references
     if signals["mentioned_repos"]:
-        found, name = check_repo_exists(signals["mentioned_repos"])
+        found, path = check_repo_exists_strict(signals["mentioned_repos"])
         if found:
-            return "VERIFIED_DONE", f"Repo exists: {name}"
+            return "VERIFIED_DONE", f"Repo exists: {path}"
 
-    # Rule 8: Git operations
-    if signals["has_git_verb"] and not signals["mentioned_filenames"]:
-        return "UNABLE_TO_VERIFY", "Git operation — would need commit-level search"
+    # Check 3: Distinctive project name keywords
+    found, detail = check_specific_project_keywords(content)
+    if found:
+        return "VERIFIED_DONE", f"Project keyword match: {detail}"
 
-    # Rule 9: Script/code creation without specific filename
-    if signals["has_script_verb"] and not signals["mentioned_filenames"]:
-        # Check if content mentions a specific script name
-        found, name = check_content_words_in_repos(content)
+    # Check 4: Git log evidence (only for git-verb prompts)
+    if signals["has_git_verb"]:
+        found, detail = check_git_log_for_keywords(content)
         if found:
-            return "VERIFIED_DONE", f"Related repo found: {name}"
-        return "UNABLE_TO_VERIFY", "Code/script prompt without specific filename"
+            return "VERIFIED_DONE", f"Git evidence: {detail}"
+        return "UNABLE_TO_VERIFY", "Git operation — no matching commit found"
 
-    # Rule 10: General file creation without clear target
-    if signals["has_file_create_verb"] and prompt_type == "creation":
-        if domain in ("code", "architecture", "infrastructure"):
-            found, name = check_content_words_in_repos(content)
-            if found:
-                return "VERIFIED_DONE", f"Related repo found: {name}"
-            return "UNABLE_TO_VERIFY", "Creation prompt — no specific file target identified"
+    # Check 5: Job application prompts -> check pipeline
+    if domain == "career" and signals["has_file_create_verb"]:
+        found, detail = check_application_pipeline(content)
+        if found:
+            return "VERIFIED_DONE", f"Application pipeline: {detail}"
 
-    # Rule 11: Status-based fallbacks
+    # ===== Status-based VERIFIED_OPEN (atom was never completed) =====
+
     if status == "FAILED":
         return "VERIFIED_OPEN", "Atom status=FAILED — never completed"
     if status == "DEFERRED":
@@ -297,18 +506,18 @@ def classify_atom(atom: dict) -> tuple[str, str]:
     if status == "OPEN":
         return "VERIFIED_OPEN", "Atom status=OPEN — not addressed"
 
-    # Rule 12: Answered prompts in conversational domains
-    if status == "ANSWERED" and domain in CONVERSATIONAL_DOMAINS:
+    # ===== UNABLE_TO_VERIFY: everything else =====
+
+    # Answered prompts in chat-native domains
+    if status == "ANSWERED" and domain in ("email", "career", "content", "creative"):
         return "UNABLE_TO_VERIFY", f"Answered {domain} prompt — output likely in chat, not filesystem"
 
-    # Rule 13: Answered prompts with code/architecture domain
-    if status == "ANSWERED" and domain in ("code", "architecture"):
-        # These might have been applied — check for repo-level signals
-        found, name = check_content_words_in_repos(content)
-        if found:
-            return "VERIFIED_DONE", f"Related repo found: {name}"
+    # Script/code prompts without specific targets
+    if signals["has_script_verb"] or signals["has_file_create_verb"]:
+        if prompt_type == "creation" and domain in ("code", "architecture", "infrastructure"):
+            return "UNABLE_TO_VERIFY", "Creation prompt — no specific file target identified"
 
-    # Default: can't determine from filesystem
+    # Default
     return "UNABLE_TO_VERIFY", f"No clear filesystem artifact to verify (type={prompt_type}, domain={domain})"
 
 
@@ -343,6 +552,7 @@ def init_db(db_path: Path) -> sqlite3.Connection:
     conn.execute("CREATE INDEX idx_priority ON triage_results(priority)")
     conn.execute("CREATE INDEX idx_domain ON triage_results(domain)")
     conn.execute("CREATE INDEX idx_priority_class ON triage_results(priority, classification)")
+    conn.execute("CREATE INDEX idx_status ON triage_results(status)")
     conn.commit()
     return conn
 
@@ -380,26 +590,23 @@ def print_stats(conn: sqlite3.Connection) -> None:
     print("REALITY TRIAGE RESULTS")
     print("=" * 80)
 
-    # Overall counts
     total = conn.execute("SELECT COUNT(*) FROM triage_results").fetchone()[0]
     print(f"\nTotal atoms triaged: {total}")
 
     # By priority
     print("\n--- By Priority ---")
-    rows = conn.execute(
+    for row in conn.execute(
         "SELECT priority, COUNT(*) FROM triage_results GROUP BY priority ORDER BY priority"
-    ).fetchall()
-    for pri, cnt in rows:
-        print(f"  {pri}: {cnt}")
+    ).fetchall():
+        print(f"  {row[0]}: {row[1]}")
 
     # By classification (overall)
     print("\n--- By Classification (Overall) ---")
-    rows = conn.execute(
+    for cls, cnt in conn.execute(
         "SELECT classification, COUNT(*) FROM triage_results GROUP BY classification ORDER BY COUNT(*) DESC"
-    ).fetchall()
-    for cls, cnt in rows:
+    ).fetchall():
         pct = cnt / total * 100 if total else 0
-        print(f"  {cls}: {cnt} ({pct:.1f}%)")
+        print(f"  {cls:20s}: {cnt:5d} ({pct:5.1f}%)")
 
     # By priority x classification
     for pri in ("P0", "P1"):
@@ -407,37 +614,30 @@ def print_stats(conn: sqlite3.Connection) -> None:
             "SELECT COUNT(*) FROM triage_results WHERE priority = ?", (pri,)
         ).fetchone()[0]
         print(f"\n--- {pri} Classification Breakdown ({pri_total} total) ---")
-        rows = conn.execute(
+        for cls, cnt in conn.execute(
             "SELECT classification, COUNT(*) FROM triage_results WHERE priority = ? GROUP BY classification ORDER BY COUNT(*) DESC",
             (pri,),
-        ).fetchall()
-        for cls, cnt in rows:
+        ).fetchall():
             pct = cnt / pri_total * 100 if pri_total else 0
             bar = "#" * int(pct / 2)
             print(f"  {cls:20s}: {cnt:5d} ({pct:5.1f}%) {bar}")
 
-    # VERIFIED_OPEN by domain (the actionable items)
+    # VERIFIED_OPEN by domain (actionable gaps)
     print("\n--- VERIFIED_OPEN by Domain (Actionable Gaps) ---")
-    rows = conn.execute(
+    for pri, dom, cnt in conn.execute(
         """SELECT priority, domain, COUNT(*)
-           FROM triage_results
-           WHERE classification = 'VERIFIED_OPEN'
-           GROUP BY priority, domain
-           ORDER BY priority, COUNT(*) DESC"""
-    ).fetchall()
-    for pri, dom, cnt in rows:
+           FROM triage_results WHERE classification = 'VERIFIED_OPEN'
+           GROUP BY priority, domain ORDER BY priority, COUNT(*) DESC"""
+    ).fetchall():
         print(f"  [{pri}] {dom}: {cnt}")
 
     # VERIFIED_DONE by domain
     print("\n--- VERIFIED_DONE by Domain (Confirmed Fulfilled) ---")
-    rows = conn.execute(
+    for pri, dom, cnt in conn.execute(
         """SELECT priority, domain, COUNT(*)
-           FROM triage_results
-           WHERE classification = 'VERIFIED_DONE'
-           GROUP BY priority, domain
-           ORDER BY priority, COUNT(*) DESC"""
-    ).fetchall()
-    for pri, dom, cnt in rows:
+           FROM triage_results WHERE classification = 'VERIFIED_DONE'
+           GROUP BY priority, domain ORDER BY priority, COUNT(*) DESC"""
+    ).fetchall():
         print(f"  [{pri}] {dom}: {cnt}")
 
     # ABANDONED
@@ -446,27 +646,22 @@ def print_stats(conn: sqlite3.Connection) -> None:
     ).fetchone()[0]
     if abandoned_count:
         print(f"\n--- ABANDONED ({abandoned_count} total) ---")
-        rows = conn.execute(
+        for pri, dom, cnt in conn.execute(
             """SELECT priority, domain, COUNT(*)
-               FROM triage_results
-               WHERE classification = 'ABANDONED'
-               GROUP BY priority, domain
-               ORDER BY priority, COUNT(*) DESC"""
-        ).fetchall()
-        for pri, dom, cnt in rows:
+               FROM triage_results WHERE classification = 'ABANDONED'
+               GROUP BY priority, domain ORDER BY priority, COUNT(*) DESC"""
+        ).fetchall():
             print(f"  [{pri}] {dom}: {cnt}")
 
     # By prompt_type x classification for P0
     print("\n--- P0 by Prompt Type x Classification ---")
-    rows = conn.execute(
+    current_type = None
+    for ptype, cls, cnt in conn.execute(
         """SELECT prompt_type, classification, COUNT(*)
-           FROM triage_results
-           WHERE priority = 'P0'
+           FROM triage_results WHERE priority = 'P0'
            GROUP BY prompt_type, classification
            ORDER BY prompt_type, COUNT(*) DESC"""
-    ).fetchall()
-    current_type = None
-    for ptype, cls, cnt in rows:
+    ).fetchall():
         if ptype != current_type:
             current_type = ptype
             print(f"  {ptype}:")
@@ -474,57 +669,105 @@ def print_stats(conn: sqlite3.Connection) -> None:
 
     # By agent
     print("\n--- By Agent ---")
-    rows = conn.execute(
-        """SELECT agent, classification, COUNT(*)
-           FROM triage_results
-           GROUP BY agent, classification
-           ORDER BY agent, COUNT(*) DESC"""
-    ).fetchall()
     current_agent = None
-    for agent, cls, cnt in rows:
-        if agent != current_agent:
-            current_agent = agent
-            print(f"  {agent}:")
+    for agent_name, cls, cnt in conn.execute(
+        """SELECT agent, classification, COUNT(*)
+           FROM triage_results GROUP BY agent, classification
+           ORDER BY agent, COUNT(*) DESC"""
+    ).fetchall():
+        if agent_name != current_agent:
+            current_agent = agent_name
+            print(f"  {agent_name}:")
         print(f"    {cls}: {cnt}")
 
-    # Top VERIFIED_OPEN P0 atoms (samples)
-    print("\n--- Sample VERIFIED_OPEN P0 Atoms (first 20) ---")
-    rows = conn.execute(
+    # Sample VERIFIED_OPEN P0 atoms
+    print("\n--- Sample VERIFIED_OPEN P0 Atoms (first 25) ---")
+    for atom_id, title, domain, ptype, evidence in conn.execute(
         """SELECT id, title, domain, prompt_type, evidence
-           FROM triage_results
-           WHERE priority = 'P0' AND classification = 'VERIFIED_OPEN'
-           LIMIT 20"""
-    ).fetchall()
-    for atom_id, title, domain, ptype, evidence in rows:
+           FROM triage_results WHERE priority = 'P0' AND classification = 'VERIFIED_OPEN'
+           LIMIT 25"""
+    ).fetchall():
         print(f"  {atom_id} [{domain}/{ptype}] {title[:80]}")
-        print(f"    Evidence: {evidence}")
+        print(f"    -> {evidence}")
 
-    # Top VERIFIED_DONE P0 atoms (samples)
-    print("\n--- Sample VERIFIED_DONE P0 Atoms (first 20) ---")
-    rows = conn.execute(
+    # Sample VERIFIED_DONE P0 atoms
+    print("\n--- Sample VERIFIED_DONE P0 Atoms (first 25) ---")
+    for atom_id, title, domain, ptype, evidence in conn.execute(
         """SELECT id, title, domain, prompt_type, evidence
-           FROM triage_results
-           WHERE priority = 'P0' AND classification = 'VERIFIED_DONE'
-           LIMIT 20"""
-    ).fetchall()
-    for atom_id, title, domain, ptype, evidence in rows:
+           FROM triage_results WHERE priority = 'P0' AND classification = 'VERIFIED_DONE'
+           LIMIT 25"""
+    ).fetchall():
         print(f"  {atom_id} [{domain}/{ptype}] {title[:80]}")
-        print(f"    Evidence: {evidence}")
+        print(f"    -> {evidence}")
 
-    # Evidence distribution for UNABLE_TO_VERIFY
-    print("\n--- UNABLE_TO_VERIFY Reasons (top 15) ---")
-    rows = conn.execute(
+    # UNABLE_TO_VERIFY reasons breakdown
+    print("\n--- UNABLE_TO_VERIFY Reasons (top 20) ---")
+    for evidence, cnt in conn.execute(
         """SELECT evidence, COUNT(*)
-           FROM triage_results
-           WHERE classification = 'UNABLE_TO_VERIFY'
-           GROUP BY evidence
-           ORDER BY COUNT(*) DESC
-           LIMIT 15"""
-    ).fetchall()
-    for evidence, cnt in rows:
+           FROM triage_results WHERE classification = 'UNABLE_TO_VERIFY'
+           GROUP BY evidence ORDER BY COUNT(*) DESC LIMIT 20"""
+    ).fetchall():
         print(f"  {cnt:5d}: {evidence[:100]}")
 
+    # P0 VERIFIED_OPEN by status (how many were never even attempted?)
+    print("\n--- P0 VERIFIED_OPEN by Original Status ---")
+    for s, cnt in conn.execute(
+        """SELECT status, COUNT(*)
+           FROM triage_results
+           WHERE priority = 'P0' AND classification = 'VERIFIED_OPEN'
+           GROUP BY status ORDER BY COUNT(*) DESC"""
+    ).fetchall():
+        print(f"  {s}: {cnt}")
+
+    # Summary box
+    p0_done = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P0' AND classification='VERIFIED_DONE'"
+    ).fetchone()[0]
+    p0_open = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P0' AND classification='VERIFIED_OPEN'"
+    ).fetchone()[0]
+    p0_abandoned = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P0' AND classification='ABANDONED'"
+    ).fetchone()[0]
+    p0_unknown = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P0' AND classification='UNABLE_TO_VERIFY'"
+    ).fetchone()[0]
+    p0_total = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P0'"
+    ).fetchone()[0]
+
     print("\n" + "=" * 80)
+    print("SUMMARY (P0 Only)")
+    print("=" * 80)
+    print(f"  VERIFIED_DONE    : {p0_done:4d} / {p0_total} ({p0_done/p0_total*100:.1f}%) - Confirmed on disk")
+    print(f"  VERIFIED_OPEN    : {p0_open:4d} / {p0_total} ({p0_open/p0_total*100:.1f}%) - Confirmed NOT done")
+    print(f"  ABANDONED        : {p0_abandoned:4d} / {p0_total} ({p0_abandoned/p0_total*100:.1f}%) - Context gone (Docker etc)")
+    print(f"  UNABLE_TO_VERIFY : {p0_unknown:4d} / {p0_total} ({p0_unknown/p0_total*100:.1f}%) - Chat-native or ambiguous")
+    print("=" * 80)
+
+    p1_done = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P1' AND classification='VERIFIED_DONE'"
+    ).fetchone()[0]
+    p1_open = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P1' AND classification='VERIFIED_OPEN'"
+    ).fetchone()[0]
+    p1_abandoned = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P1' AND classification='ABANDONED'"
+    ).fetchone()[0]
+    p1_unknown = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P1' AND classification='UNABLE_TO_VERIFY'"
+    ).fetchone()[0]
+    p1_total = conn.execute(
+        "SELECT COUNT(*) FROM triage_results WHERE priority='P1'"
+    ).fetchone()[0]
+
+    print("SUMMARY (P1 Only)")
+    print("=" * 80)
+    print(f"  VERIFIED_DONE    : {p1_done:4d} / {p1_total} ({p1_done/p1_total*100:.1f}%) - Confirmed on disk")
+    print(f"  VERIFIED_OPEN    : {p1_open:4d} / {p1_total} ({p1_open/p1_total*100:.1f}%) - Confirmed NOT done")
+    print(f"  ABANDONED        : {p1_abandoned:4d} / {p1_total} ({p1_abandoned/p1_total*100:.1f}%) - Context gone")
+    print(f"  UNABLE_TO_VERIFY : {p1_unknown:4d} / {p1_total} ({p1_unknown/p1_total*100:.1f}%) - Chat-native or ambiguous")
+    print("=" * 80)
 
 
 # ---------------------------------------------------------------------------
@@ -536,11 +779,12 @@ def main() -> None:
 
     # Step 1: Index workspace
     index_workspace()
+    index_git_logs()
 
     # Step 2: Load atoms
     log("Loading prompt atoms...")
-    atoms_p0 = []
-    atoms_p1 = []
+    atoms_p0: list[dict] = []
+    atoms_p1: list[dict] = []
     with open(ATOMS_FILE) as f:
         for line in f:
             obj = json.loads(line)
@@ -556,10 +800,10 @@ def main() -> None:
     conn = init_db(DB_PATH)
     log(f"Database initialized at {DB_PATH}")
 
-    # Step 4: Triage P0 first
+    # Step 4: Triage P0
     log("Triaging P0 atoms...")
     t_p0 = time.time()
-    p0_stats = Counter()
+    p0_stats: Counter = Counter()
     for atom in atoms_p0:
         classification, evidence = classify_atom(atom)
         p0_stats[classification] += 1
@@ -570,7 +814,7 @@ def main() -> None:
     # Step 5: Triage P1
     log("Triaging P1 atoms...")
     t_p1 = time.time()
-    p1_stats = Counter()
+    p1_stats: Counter = Counter()
     for atom in atoms_p1:
         classification, evidence = classify_atom(atom)
         p1_stats[classification] += 1
@@ -578,7 +822,7 @@ def main() -> None:
     conn.commit()
     log(f"P1 done in {time.time() - t_p1:.1f}s: {dict(p1_stats)}")
 
-    # Step 6: Print comprehensive stats
+    # Step 6: Print stats
     print_stats(conn)
 
     conn.close()

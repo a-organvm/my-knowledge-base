@@ -6,7 +6,7 @@ Writes decisions to review-results.db with auditable notes.
 
 Rules applied:
   1. ABANDONED  — references to tools/services no longer in the user's stack
-  2. SUPERSEDED — high content overlap (>80%) with a later prompt in the same thread
+  2. SUPERSEDED — high content overlap (>90%) with a later prompt in the same thread
   3. ACTUALLY_DONE (git ops)  — git push/commit prompts where assistant confirms success
   4. ACTUALLY_DONE (file ops) — file creation prompts where assistant confirms creation
 
@@ -122,7 +122,7 @@ def check_abandoned(atom: dict) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
-# Rule 2: SUPERSEDED — >80% content overlap with a later prompt in same thread
+# Rule 2: SUPERSEDED — >90% content overlap with a later prompt in same thread
 # ---------------------------------------------------------------------------
 def trigram_set(text: str) -> set[str]:
     """Character trigrams for fast similarity estimation."""
@@ -142,9 +142,13 @@ def trigram_similarity(a: str, b: str) -> float:
     return intersection / union if union else 0.0
 
 
-def find_superseded(thread_atoms: list[dict]) -> list[tuple[str, str]]:
-    """Return list of (atom_id, superseded_by_id) for atoms with >80% overlap
-    with a later prompt in the same thread.
+def find_superseded(thread_atoms: list[dict]) -> list[tuple[str, str, float]]:
+    """Return list of (atom_id, superseded_by_id, similarity) for atoms with
+    >90% overlap with a later prompt in the same thread.
+
+    Threshold is 0.90 for >90% classification confidence.
+    At 0.80-0.90 there are edge cases like "step one" vs "step two" that
+    look similar on trigrams but ask fundamentally different things.
 
     Only compares atoms with content long enough to be meaningful (>40 chars).
     The earlier atom is the one marked superseded.
@@ -165,8 +169,8 @@ def find_superseded(thread_atoms: list[dict]) -> list[tuple[str, str]]:
             if len(later_content) < 40:
                 continue
             sim = trigram_similarity(earlier_content, later_content)
-            if sim > 0.80:
-                results.append((earlier["id"], later["id"]))
+            if sim > 0.90:
+                results.append((earlier["id"], later["id"], sim))
                 break  # One supersession per atom is enough
     return results
 
@@ -253,10 +257,10 @@ def get_assistant_response(db_conn: sqlite3.Connection, thread_id: str, turn_ind
     return row[0] if row else None
 
 
-def get_already_reviewed(review_conn: sqlite3.Connection) -> set[str]:
-    """Return set of prompt IDs already reviewed."""
-    cursor = review_conn.execute("SELECT prompt_id FROM reviews")
-    return {row[0] for row in cursor}
+def get_review_statuses(review_conn: sqlite3.Connection) -> dict[str, str]:
+    """Return dict of prompt_id -> status for all reviewed atoms."""
+    cursor = review_conn.execute("SELECT prompt_id, status FROM reviews")
+    return {row[0]: row[1] for row in cursor}
 
 
 def save_review(review_conn: sqlite3.Connection, prompt_id: str, status: str, notes: str) -> None:
@@ -319,8 +323,27 @@ def main() -> None:
     """)
     review_conn.commit()
 
-    already_reviewed = get_already_reviewed(review_conn)
-    print(f"  Already reviewed: {len(already_reviewed)}")
+    review_statuses = get_review_statuses(review_conn)
+    # Classify which atoms are candidates for our rules:
+    # - Atoms with no review at all (unreviewed)
+    # - Atoms with status NEEDS_REVIEW (prior auto-ops couldn't classify)
+    # We do NOT re-classify atoms already marked VERIFIED_DONE, DORMANT,
+    # or TRANSFORMED unless they match our ABANDONED/SUPERSEDED rules.
+    terminal_statuses = {"VERIFIED_DONE", "DORMANT", "TRANSFORMED"}
+    needs_work_ids = set()
+    for atom in atoms:
+        aid = atom["id"]
+        current_status = review_statuses.get(aid)
+        if current_status is None or current_status == "NEEDS_REVIEW":
+            needs_work_ids.add(aid)
+
+    status_dist = defaultdict(int)
+    for s in review_statuses.values():
+        status_dist[s] += 1
+    print(f"  Existing reviews: {len(review_statuses)}")
+    for s, c in sorted(status_dist.items(), key=lambda x: -x[1]):
+        print(f"    {s}: {c}")
+    print(f"  Targetable (unreviewed + NEEDS_REVIEW): {len(needs_work_ids)}")
 
     # Index atoms by thread for rule 2
     threads: dict[str, list[dict]] = defaultdict(list)
@@ -342,14 +365,12 @@ def main() -> None:
         "superseded": 0,
         "done_git": 0,
         "done_file": 0,
-        "skipped_already_reviewed": 0,
-        "skipped_not_needs_review": 0,
     }
 
     # Rule 1: ABANDONED
     print("\nRule 1: Scanning for ABANDONED (defunct tools/services) ...")
     for atom in atoms:
-        if atom["id"] in already_reviewed:
+        if atom["id"] not in needs_work_ids:
             continue
         is_abandoned, reason = check_abandoned(atom)
         if is_abandoned:
@@ -360,34 +381,32 @@ def main() -> None:
             counts["abandoned"] += 1
 
     # Rule 2: SUPERSEDED
-    print("Rule 2: Scanning for SUPERSEDED (>80% overlap in same thread) ...")
+    # For superseded detection, we check ALL atoms in a thread (not just
+    # needs_work), because a NEEDS_REVIEW atom might be superseded by a
+    # VERIFIED_DONE atom. But we only CLASSIFY the needs_work atom.
+    print("Rule 2: Scanning for SUPERSEDED (>90% overlap in same thread) ...")
     for tid, thread_atoms in threads.items():
         if len(thread_atoms) < 2:
             continue
-        # Only check atoms that aren't already reviewed or classified
-        checkable = [
-            a for a in thread_atoms
-            if a["id"] not in already_reviewed and a["id"] not in classifications
-        ]
-        if len(checkable) < 2:
-            continue
-        superseded = find_superseded(checkable)
-        for earlier_id, later_id in superseded:
-            classifications[earlier_id] = (
-                "SUPERSEDED",
-                f"auto-classified: superseded by {later_id} (>80% content overlap in same thread)",
-            )
-            counts["superseded"] += 1
+        # Check all atoms in thread for overlap, but only mark needs_work ones
+        superseded = find_superseded(thread_atoms)
+        for earlier_id, later_id, sim_score in superseded:
+            if earlier_id in needs_work_ids and earlier_id not in classifications:
+                classifications[earlier_id] = (
+                    "SUPERSEDED",
+                    f"auto-classified: superseded by {later_id} (similarity={sim_score:.2f} in same thread)",
+                )
+                counts["superseded"] += 1
 
     # Rules 3 & 4: ACTUALLY_DONE (require knowledge.db)
     if kb_conn:
         print("Rule 3: Scanning for ACTUALLY_DONE (git operations) ...")
         print("Rule 4: Scanning for ACTUALLY_DONE (file operations) ...")
 
-        # Only check atoms not already classified and not already reviewed
+        # Only check atoms still targetable and not already classified
         remaining = [
             a for a in atoms
-            if a["id"] not in already_reviewed and a["id"] not in classifications
+            if a["id"] in needs_work_ids and a["id"] not in classifications
         ]
 
         # Batch by thread to reduce DB queries
@@ -434,8 +453,8 @@ def main() -> None:
     print(f"AUTO-CLASSIFICATION RESULTS")
     print(f"{'=' * 60}")
     print(f"Total atoms:            {len(atoms)}")
-    print(f"Already reviewed:       {len(already_reviewed)}")
-    print(f"Remaining for review:   {len(atoms) - len(already_reviewed)}")
+    print(f"Already terminal:       {len(atoms) - len(needs_work_ids)}")
+    print(f"Targetable:             {len(needs_work_ids)}")
     print(f"Auto-classified:        {total_classified}")
     print(f"{'=' * 60}")
     print(f"  ABANDONED:            {counts['abandoned']}")
@@ -443,9 +462,9 @@ def main() -> None:
     print(f"  ACTUALLY_DONE (git):  {counts['done_git']}")
     print(f"  ACTUALLY_DONE (file): {counts['done_file']}")
     print(f"{'=' * 60}")
-    remaining_after = len(atoms) - len(already_reviewed) - total_classified
-    pct = (total_classified / (len(atoms) - len(already_reviewed)) * 100) if (len(atoms) - len(already_reviewed)) > 0 else 0
-    print(f"Reduction:              {pct:.1f}% of unreviewed atoms pre-classified")
+    remaining_after = len(needs_work_ids) - total_classified
+    pct = (total_classified / len(needs_work_ids) * 100) if needs_work_ids else 0
+    print(f"Reduction:              {pct:.1f}% of targetable atoms pre-classified")
     print(f"Remaining manual:       {remaining_after}")
     print()
 
