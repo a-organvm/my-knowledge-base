@@ -1,0 +1,82 @@
+# GitHub labels for issue and PR management
+# Apply with: gh label create --force -R <owner>/<repo> -n <name> -c <color> -d <description>
+
+- name: "bug"
+  color: "d73a4a"
+  description: "Something isn't working"
+
+- name: "enhancement"
+  color: "a2eeef"
+  description: "New feature or request"
+
+- name: "documentation"
+  color: "0075ca"
+  description: "Improvements or additions to documentation"
+
+- name: "good first issue"
+  color: "7057ff"
+  description: "Good for newcomers"
+
+- name: "help wanted"
+  color: "008672"
+  description: "Extra attention is needed"
+
+- name: "question"
+  color: "d876e3"
+  description: "Further information is requested"
+
+- name: "duplicate"
+  color: "cfd3d7"
+  description: "This issue or pull request already exists"
+
+- name: "wontfix"
+  color: "ffffff"
+  description: "This will not be worked on"
+
+- name: "priority: P0"
+  color: "b60205"
+  description: "Critical — must be addressed immediately"
+
+- name: "priority: P1"
+  color: "e99695"
+  description: "High — should be addressed this sprint"
+
+- name: "priority: P2"
+  color: "fbca04"
+  description: "Medium — scheduled for next sprint"
+
+- name: "priority: P3"
+  color: "c5def5"
+  description: "Low — backlog"
+
+- name: "phase: ingest"
+  color: "1d76db"
+  description: "Related to data ingestion pipeline"
+
+- name: "phase: atomize"
+  color: "5319e7"
+  description: "Related to knowledge atomization"
+
+- name: "phase: search"
+  color: "0e8a16"
+  description: "Related to search functionality"
+
+- name: "phase: intelligence"
+  color: "e4e669"
+  description: "Related to AI-powered intelligence features"
+
+- name: "infra"
+  color: "d4c5f9"
+  description: "Infrastructure, CI/CD, deployment"
+
+- name: "security"
+  color: "ee0701"
+  description: "Security-related issue"
+
+- name: "performance"
+  color: "bfd4f2"
+  description: "Performance improvement"
+
+- name: "refactor"
+  color: "fef2c0"
+  description: "Code refactoring without behavior change"

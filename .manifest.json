@@ -1,0 +1,43 @@
+{
+  "name": "knowledge-base",
+  "version": "1.0.0",
+  "description": "Personal knowledge database — Claude conversation export, atomization, and AI-powered intelligence extraction",
+  "organ": "ORGAN-I",
+  "tier": "standard",
+  "status": "GRADUATED",
+  "stack": {
+    "runtime": "node",
+    "language": "typescript",
+    "database": ["sqlite", "chromadb"],
+    "ai": ["anthropic", "openai"]
+  },
+  "entry_points": {
+    "build": "npm run build",
+    "test": "npm test",
+    "start": "npm run web",
+    "export": "npm run export:dev",
+    "search": "npm run search"
+  },
+  "directories": {
+    "source": "src/",
+    "tests": "tests/",
+    "database": "db/",
+    "config": "config/",
+    "scripts": "scripts/",
+    "docs": "docs/",
+    "web": "web-react/"
+  },
+  "features": [
+    "conversation-export",
+    "knowledge-atomization",
+    "full-text-search",
+    "semantic-search",
+    "hybrid-search",
+    "insight-extraction",
+    "smart-tagging",
+    "relationship-detection",
+    "rest-api",
+    "web-ui"
+  ],
+  "generated_at": "2026-04-23T00:00:00Z"
+}
