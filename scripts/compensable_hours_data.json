@@ -1,0 +1,128 @@
+{
+  "title": "Extra Compensable Hours Beyond Classroom Instruction",
+  "period": "January-March 2025",
+  "categories": [
+    {
+      "name": "ENG 101 (Composition, 6-week Module)",
+      "subcategories": [
+        {
+          "name": "Canvas Time (Outside Class)",
+          "hours": 31.0
+        },
+        {
+          "name": "Grading & Feedback",
+          "hours": 12.0
+        },
+        {
+          "name": "Mid-Module Evaluations",
+          "hours": 2.0
+        },
+        {
+          "name": "Final Grade Submission",
+          "hours": 0.5
+        },
+        {
+          "name": "Course Redesign & Admin",
+          "hours": 10.0
+        },
+        {
+          "name": "Student Correspondence",
+          "hours": 1.0
+        }
+      ],
+      "total": 25.5,
+      "note": "Subtracted 35 hrs in-class Canvas usage from 66 hrs total"
+    },
+    {
+      "name": "ENG 204 (Literature, 15-week Course)",
+      "subcategories": [
+        {
+          "name": "Canvas Time (Outside Class)",
+          "hours": 33.0
+        },
+        {
+          "name": "Canvas Course Redesign",
+          "hours": 20.0
+        },
+        {
+          "name": "Grading & Weekly Feedback",
+          "hours": 50.0
+        },
+        {
+          "name": "Student Correspondence",
+          "hours": 1.0
+        }
+      ],
+      "total": 71.0,
+      "note": "Subtracted 10 hrs in-class usage from 43 hrs total"
+    },
+    {
+      "name": "Additional ENG 101 (First 3 Weeks)",
+      "subcategories": [
+        {
+          "name": "Grading & Feedback",
+          "hours": 6.0
+        },
+        {
+          "name": "Admin & Course Adjustments",
+          "hours": 3.0
+        }
+      ],
+      "total": 9.0,
+      "note": "Took over mid-course due to faculty departure"
+    },
+    {
+      "name": "Mandatory Trainings & Meetings",
+      "subcategories": [
+        {
+          "name": "Faculty Development (FDP300)",
+          "hours": 6.0
+        },
+        {
+          "name": "Title IX Training",
+          "hours": 0.5
+        },
+        {
+          "name": "Cybersecurity Training",
+          "hours": 0.5
+        },
+        {
+          "name": "Drugs & Alcohol Training",
+          "hours": 0.5
+        },
+        {
+          "name": "Sexual Harassment Prevention",
+          "hours": 0.5
+        },
+        {
+          "name": "Faculty Observation",
+          "hours": 1.0
+        },
+        {
+          "name": "Faculty Friday Meeting",
+          "hours": 1.0
+        }
+      ],
+      "total": 10.0,
+      "note": "Required but unpaid under hourly model"
+    }
+  ],
+  "grand_total": 115.5,
+  "comparison": [
+    {
+      "institution": "CUNY",
+      "model": "Flat rate ($100/hr)",
+      "for_60hrs": "$6,000"
+    },
+    {
+      "institution": "Wagner College",
+      "model": "$46-86/hr (avg $66)",
+      "for_60hrs": "$3,960"
+    },
+    {
+      "institution": "Rutgers",
+      "model": "$2,400-2,700/credit",
+      "for_60hrs": "$7,200-$8,100"
+    }
+  ]
+}
