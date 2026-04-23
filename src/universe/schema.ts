@@ -115,6 +115,7 @@ export function ensureUniverseSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_provider_accounts_provider ON provider_accounts(provider_ref_id);
     CREATE INDEX IF NOT EXISTS idx_chat_threads_provider ON chat_threads(provider_ref_id);
     CREATE INDEX IF NOT EXISTS idx_chat_threads_account ON chat_threads(account_ref_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_threads_content_hash ON chat_threads(json_extract(metadata, '$.contentHash'));
     CREATE INDEX IF NOT EXISTS idx_chat_turns_thread_index ON chat_turns(thread_id, turn_index);
     CREATE INDEX IF NOT EXISTS idx_chat_turns_pair ON chat_turns(pair_turn_id);
     CREATE INDEX IF NOT EXISTS idx_term_lexicon_norm ON term_lexicon(normalized_term);

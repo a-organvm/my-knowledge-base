@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { dirname, join } from 'path';
 import { KnowledgeDatabase } from '../database.js';
+import { CHAT_THREAD_CONTENT_HASH_VERSION } from './content-hash.js';
 import { UniverseStore } from './store.js';
 import { UniverseIngestService } from './ingest.js';
 
@@ -143,5 +144,44 @@ Assistant: Build cooccurrence links and inspect weights.
     const run = store.getIngestRun(report.runId);
     expect(run).toBeDefined();
     expect(run?.status).toBe('completed');
+  });
+
+  it('skips conversations whose content hash already exists on rerun', () => {
+    const firstReport = ingest.run({
+      rootDir: intakeDir,
+      save: true,
+      reportDir,
+      limit: 50,
+    });
+
+    expect(firstReport.chatsIngested).toBeGreaterThanOrEqual(5);
+
+    const threads = db
+      .getRawHandle()
+      .prepare('SELECT metadata FROM chat_threads')
+      .all() as Array<{ metadata: string }>;
+
+    expect(threads.length).toBeGreaterThanOrEqual(5);
+    for (const thread of threads) {
+      const metadata = JSON.parse(thread.metadata) as Record<string, unknown>;
+      expect(typeof metadata.contentHash).toBe('string');
+      expect(metadata.contentHashVersion).toBe(CHAT_THREAD_CONTENT_HASH_VERSION);
+    }
+
+    const secondReport = ingest.run({
+      rootDir: intakeDir,
+      save: true,
+      reportDir,
+      limit: 50,
+    });
+
+    expect(secondReport.filesIngested).toBe(0);
+    expect(secondReport.chatsIngested).toBe(0);
+    expect(secondReport.turnsIngested).toBe(0);
+    expect(secondReport.filesQuarantined).toBe(1);
+
+    const summary = store.getUniverseSummary();
+    expect(summary.chats).toBeGreaterThanOrEqual(5);
+    expect(summary.turns).toBeGreaterThanOrEqual(10);
   });
 });

@@ -12,6 +12,7 @@ import type {
   UniverseIngestRun,
   UniverseSummary,
 } from '@knowledge-base/contracts';
+import { CHAT_THREAD_CONTENT_HASH_VERSION, createChatThreadContentHash } from './content-hash.js';
 import { ensureUniverseSchema } from './schema.js';
 
 export interface UpsertThreadInput {
@@ -339,6 +340,82 @@ export class UniverseStore {
 
     const inserted = this.db.prepare('SELECT * FROM chat_threads WHERE id = ?').get(id) as any;
     return toThreadRecord(inserted);
+  }
+
+  threadExistsByContentHash(contentHash: string): boolean {
+    const row = this.db
+      .prepare(`
+        SELECT 1 FROM chat_threads
+        WHERE json_extract(metadata, '$.contentHash') = ?
+        LIMIT 1
+      `)
+      .get(contentHash);
+    return !!row;
+  }
+
+  backfillChatThreadContentHashes(): number {
+    const rows = this.db
+      .prepare(`
+        SELECT id, title, metadata
+        FROM chat_threads
+      `)
+      .all() as Array<{
+        id: string;
+        title: string;
+        metadata: string;
+      }>;
+
+    const staleRows = rows.filter((row) => {
+      const metadata = parseJsonRecord(row.metadata);
+      return metadata.contentHashVersion !== CHAT_THREAD_CONTENT_HASH_VERSION;
+    });
+
+    if (staleRows.length === 0) {
+      return 0;
+    }
+
+    const selectTurns = this.db.prepare(`
+      SELECT turn_index, role, content
+      FROM chat_turns
+      WHERE thread_id = ?
+      ORDER BY turn_index ASC
+    `);
+    const updateThread = this.db.prepare(`
+      UPDATE chat_threads
+      SET metadata = ?
+      WHERE id = ?
+    `);
+
+    const tx = this.db.transaction(() => {
+      for (const row of staleRows) {
+        const metadata = parseJsonRecord(row.metadata);
+        const turns = selectTurns.all(row.id) as Array<{
+          turn_index: number;
+          role: 'system' | 'user' | 'assistant' | 'tool';
+          content: string;
+        }>;
+
+        const contentHash = createChatThreadContentHash({
+          turns: turns.map((turn) => ({
+            turnIndex: turn.turn_index,
+            role: turn.role,
+            content: turn.content,
+          })),
+        });
+
+        updateThread.run(
+          JSON.stringify({
+            ...metadata,
+            contentHash,
+            contentHashVersion: CHAT_THREAD_CONTENT_HASH_VERSION,
+          }),
+          row.id,
+        );
+      }
+    });
+
+    tx();
+    return staleRows.length;
   }
 
   private syncConversationBridge(thread: ChatThreadRecord): void {

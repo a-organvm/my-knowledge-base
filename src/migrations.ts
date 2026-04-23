@@ -840,5 +840,19 @@ export const coreMigrations: Migration[] = [
       `);
       logger.warn('Rollback from migration 10 leaves added conversation columns due SQLite limitations');
     },
+  },
+  {
+    version: 11,
+    name: 'add_chat_thread_content_hash_index',
+    up: (db) => {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_chat_threads_content_hash ON chat_threads(json_extract(metadata, '$.contentHash'));
+      `);
+    },
+    down: (db) => {
+      db.exec(`
+        DROP INDEX IF EXISTS idx_chat_threads_content_hash;
+      `);
+    },
   }
 ];
