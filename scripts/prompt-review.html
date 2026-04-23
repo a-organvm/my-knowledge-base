@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt Review — Does This Thing Exist?</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --purple: #bc8cff; --orange: #db6d28;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 15px; line-height: 1.6; }
+
+  .header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 12px 24px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
+  .header h1 { font-size: 16px; font-weight: 600; }
+  .header .stats { font-size: 13px; color: var(--text-dim); }
+
+  .progress-bar { height: 3px; background: var(--border); width: 100%; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width 0.3s; }
+
+  .main { max-width: 900px; margin: 0 auto; padding: 24px; }
+
+  .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  .badge-provider { background: #1f6feb33; color: var(--accent); }
+  .badge-domain { background: #238636; color: #fff; }
+  .badge-priority { background: var(--yellow); color: #000; }
+  .badge-priority.P0 { background: var(--red); color: #fff; }
+  .badge-priority.P1 { background: var(--orange); color: #fff; }
+  .badge-type { background: var(--purple); color: #000; }
+  .badge-date { background: var(--surface); color: var(--text-dim); border: 1px solid var(--border); }
+
+  .prompt-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+  .prompt-card h2 { font-size: 13px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .prompt-content { white-space: pre-wrap; word-break: break-word; font-size: 14px; max-height: 400px; overflow-y: auto; }
+
+  .response-card { background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; border-left: 3px solid var(--accent); }
+  .response-card h2 { font-size: 13px; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .response-content { white-space: pre-wrap; word-break: break-word; font-size: 13px; color: var(--text-dim); max-height: 300px; overflow-y: auto; }
+
+  .actions { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 16px; }
+  .action-btn { padding: 12px 8px; border: 2px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; transition: all 0.15s; }
+  .action-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .action-btn .key { display: block; font-size: 18px; margin-bottom: 4px; opacity: 0.5; }
+  .action-btn.done { border-color: var(--green); }
+  .action-btn.done:hover { background: #3fb95020; }
+  .action-btn.open { border-color: var(--yellow); }
+  .action-btn.open:hover { background: #d2992220; }
+  .action-btn.abandoned { border-color: var(--red); }
+  .action-btn.abandoned:hover { background: #f8514920; }
+  .action-btn.superseded { border-color: var(--purple); }
+  .action-btn.superseded:hover { background: #bc8cff20; }
+  .action-btn.decompose { border-color: var(--orange); }
+  .action-btn.decompose:hover { background: #db6d2820; }
+
+  .undo-bar { text-align: center; margin-bottom: 16px; }
+  .undo-btn { background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  .undo-btn:hover { border-color: var(--text-dim); color: var(--text); }
+
+  .done-screen { text-align: center; padding: 80px 24px; }
+  .done-screen h1 { font-size: 32px; margin-bottom: 16px; }
+  .done-screen p { color: var(--text-dim); font-size: 16px; }
+
+  .status-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-top: 24px; }
+  .status-cell { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+  .status-cell .count { font-size: 24px; font-weight: 700; }
+  .status-cell .label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; }
+
+  .loading { text-align: center; padding: 80px; color: var(--text-dim); }
+
+  @media (max-width: 640px) {
+    .actions { grid-template-columns: repeat(3, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Prompt Review</h1>
+  <div class="stats" id="stats">Loading...</div>
+</div>
+<div class="progress-bar"><div class="progress-fill" id="progress" style="width:0%"></div></div>
+
+<div class="main" id="main">
+  <div class="loading">Loading prompts...</div>
+</div>
+
+<script>
+const API = '';
+
+async function fetchNext() {
+  const res = await fetch(`${API}/api/next`);
+  return res.json();
+}
+
+async function submitReview(promptId, status, notes = '') {
+  const res = await fetch(`${API}/api/review/${encodeURIComponent(promptId)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status, notes })
+  });
+  return res.json();
+}
+
+async function undoLast() {
+  const res = await fetch(`${API}/api/undo`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  return res.json();
+}
+
+function updateStats(stats) {
+  const el = document.getElementById('stats');
+  el.textContent = `${stats.reviewed} / ${stats.total} reviewed (${stats.percent}%)`;
+  document.getElementById('progress').style.width = `${stats.percent}%`;
+}
+
+function renderPrompt(data) {
+  const main = document.getElementById('main');
+
+  if (data.done) {
+    main.innerHTML = `
+      <div class="done-screen">
+        <h1>Review Complete</h1>
+        <p>All ${data.stats.total} prompts reviewed.</p>
+        <div class="status-grid">
+          ${Object.entries(data.stats.by_status || {}).map(([s, c]) => `
+            <div class="status-cell">
+              <div class="count">${c}</div>
+              <div class="label">${s}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>`;
+    updateStats(data.stats);
+    return;
+  }
+
+  const atom = data.atom;
+  const source = atom.source || {};
+  const ts = (source.timestamp || '').substring(0, 10);
+  const priority = atom.priority || 'P3';
+
+  main.innerHTML = `
+    <div class="meta">
+      <span class="badge badge-priority ${priority}">${priority}</span>
+      <span class="badge badge-provider">${source.provider || '?'}</span>
+      <span class="badge badge-domain">${atom.domain || 'general'}</span>
+      <span class="badge badge-type">${atom.prompt_type || 'directive'}</span>
+      <span class="badge badge-date">${ts || 'no date'}</span>
+      <span class="badge badge-date">${atom.status || '?'}</span>
+    </div>
+
+    <div class="prompt-card">
+      <h2>Your Prompt</h2>
+      <div class="prompt-content">${escapeHtml(atom.content || atom.title || '')}</div>
+    </div>
+
+    ${data.assistant_response ? `
+    <div class="response-card">
+      <h2>AI Response (first 3000 chars)</h2>
+      <div class="response-content">${escapeHtml(data.assistant_response)}</div>
+    </div>` : ''}
+
+    <div class="actions">
+      <button class="action-btn done" onclick="review('${atom.id}', 'ACTUALLY_DONE')">
+        <span class="key">1</span>ACTUALLY DONE
+      </button>
+      <button class="action-btn open" onclick="review('${atom.id}', 'STILL_OPEN')">
+        <span class="key">2</span>STILL OPEN
+      </button>
+      <button class="action-btn abandoned" onclick="review('${atom.id}', 'ABANDONED')">
+        <span class="key">3</span>ABANDONED
+      </button>
+      <button class="action-btn superseded" onclick="review('${atom.id}', 'SUPERSEDED')">
+        <span class="key">4</span>SUPERSEDED
+      </button>
+      <button class="action-btn decompose" onclick="review('${atom.id}', 'NEEDS_DECOMPOSITION')">
+        <span class="key">5</span>DECOMPOSE
+      </button>
+    </div>
+
+    <div class="undo-bar">
+      <button class="undo-btn" onclick="undo()">Undo last (Z)</button>
+    </div>
+  `;
+
+  updateStats(data.stats);
+  window._currentId = atom.id;
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+async function review(promptId, status) {
+  const data = await submitReview(promptId, status);
+  renderPrompt(data);
+}
+
+async function undo() {
+  const data = await undoLast();
+  if (data.undone && data.atom) {
+    renderPrompt({ atom: data.atom, assistant_response: data.assistant_response, stats: data.stats });
+  }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (!window._currentId) return;
+  const id = window._currentId;
+  switch(e.key) {
+    case '1': review(id, 'ACTUALLY_DONE'); break;
+    case '2': review(id, 'STILL_OPEN'); break;
+    case '3': review(id, 'ABANDONED'); break;
+    case '4': review(id, 'SUPERSEDED'); break;
+    case '5': review(id, 'NEEDS_DECOMPOSITION'); break;
+    case 'z': case 'Z': undo(); break;
+  }
+});
+
+// Init
+fetchNext().then(renderPrompt);
+</script>
+</body>
+</html>
