@@ -1,0 +1,15 @@
+{
+  "commands": [
+    { "command": "Do undo", "action": "undo" },
+    { "command": "Do save", "action": "save" },
+    { "command": "Do copy", "action": "copy" },
+    { "command": "Do paste", "action": "paste" },
+    { "command": "Put task", "snippet": "- [ ] " },
+    { "command": "Put bullet", "snippet": "- " },
+    { "command": "Put note", "snippet": "> [!NOTE]\n> " },
+    { "command": "Put important", "snippet": "> [!IMPORTANT]\n> " },
+    { "command": "Put code block", "snippet": "```${1:typescript}\n$2\n```" },
+    { "command": "Search knowledge", "action": "vsc-command:workbench.action.findInFiles" },
+    { "command": "Go to record", "action": "vsc-command:workbench.action.quickOpen", "args": ["TOTAL_RECORD.md"] }
+  ]
+}
