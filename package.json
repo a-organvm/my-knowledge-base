@@ -65,6 +65,7 @@
     "reprocess:documents": "tsx src/reprocess-documents-cli.ts",
     "find-relationships": "tsx src/find-relationships-cli.ts",
     "summarize": "tsx src/summarize-cli.ts",
+    "compile:wiki": "tsx src/wiki-compiler/wiki-compiler-cli.ts",
     "web": "tsx src/web-server.ts",
     "export-obsidian": "tsx src/export-obsidian.ts",
     "export-incremental": "tsx src/export-incremental.ts",

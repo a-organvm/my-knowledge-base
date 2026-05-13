@@ -75,3 +75,7 @@ src/debug-*.ts
 
 # Large index files
 atomized/json/index.jsonl
+.batch-checkpoints/
+.history/
+.lh/
+.specstory/

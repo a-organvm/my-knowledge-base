@@ -13,7 +13,7 @@ sources:
     provider: "local"
     path: "~/Projects"
     enabled: true
-    patterns: 
+    patterns:
       - "**/*.md"
       - "**/*.txt"
       - "**/*.pdf"
@@ -22,6 +22,72 @@ sources:
       - "**/node_modules/**"
       - "**/dist/**"
       - "**/.git/**"
+      - "**/vendor/**"
+      - "**/target/**"
+      - "**/build/**"
+
+  # ----------------------------------------------------------------------------
+  # 💻 Workspace Projects (~/Workspace)
+  # ----------------------------------------------------------------------------
+  - id: "workspace-projects"
+    name: "Workspace Projects"
+    provider: "local"
+    path: "~/Workspace"
+    enabled: false
+    patterns:
+      - "**/*.md"
+      - "**/*.txt"
+      - "**/*.pdf"
+    ignore:
+      - "**/node_modules/**"
+      - "**/dist/**"
+      - "**/.git/**"
+      - "**/vendor/**"
+      - "**/target/**"
+      - "**/build/**"
+      - "**/Library/**"
+
+  # ----------------------------------------------------------------------------
+  # 📥 Intake (Brain Sweep staging)
+  # ----------------------------------------------------------------------------
+  - id: "intake-documents"
+    name: "Intake Documents"
+    provider: "local"
+    path: "intake"
+    enabled: true
+    patterns:
+      - "**/*.md"
+      - "**/*.txt"
+      - "**/*.pdf"
+      - "**/*.json"
+    ignore:
+      - "**/artifacts/**"
+      - "**/canonical/**"
+      - "**/reports/**"
+      - "**/archive-batches/**"
+
+  # ----------------------------------------------------------------------------
+  # 🖥️ Desktop & Downloads
+  # ----------------------------------------------------------------------------
+  - id: "desktop-items"
+    name: "Desktop"
+    provider: "local"
+    path: "~/Desktop"
+    enabled: true
+    patterns:
+      - "*.md"
+      - "*.pdf"
+      - "*.txt"
+
+  - id: "downloads-items"
+    name: "Downloads"
+    provider: "local"
+    path: "~/Downloads"
+    enabled: true
+    patterns:
+      - "*.md"
+      - "*.pdf"
+      - "*.txt"
 
   # ----------------------------------------------------------------------------
   # ⚖️ MDC Legal Case
@@ -43,7 +109,7 @@ sources:
     name: "iCloud Documents"
     provider: "icloud"
     path: "~/Library/Mobile Documents/com~apple~CloudDocs/Documents"
-    enabled: true  # Enable when ready
+    enabled: false  # Disable for now to speed up ingestion
     patterns:
       - "**/*.md"
       - "**/*.pdf"

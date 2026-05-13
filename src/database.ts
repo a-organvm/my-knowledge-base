@@ -1216,6 +1216,15 @@ export class KnowledgeDatabase {
     return this.rowsToAtomicUnits(rows);
   }
 
+  getAllAtomicUnits(): AtomicUnit[] {
+    const stmt = this.db.prepare(`
+      SELECT * FROM atomic_units
+      ORDER BY created ASC
+    `);
+    const rows = stmt.all() as any[];
+    return this.rowsToAtomicUnits(rows);
+  }
+
   getAllConversations(): Conversation[] {
     const stmt = this.db.prepare(`SELECT * FROM conversations ORDER BY created DESC`);
     const rows = stmt.all() as any[];
