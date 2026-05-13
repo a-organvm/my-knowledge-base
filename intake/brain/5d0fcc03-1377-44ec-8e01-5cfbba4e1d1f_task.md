@@ -1,0 +1,22 @@
+# Task Breakdown: Exhaustive Testing Protocols
+
+- [x] Plan Testing Strategy
+  - [x] Review current state of backend tests
+  - [x] Review current state of frontend tests
+  - [x] Write implementation plan and get user approval
+- [x] Backend Testing Enhancements
+  - [x] Configure `pytest-cov` for coverage reporting
+  - [x] Add missing test cases to reach high coverage (if any obvious gaps exist)
+  - [x] Update documentation/scripts to run backend test suite
+- [x] Frontend Testing Setup
+  - [x] Install Jest and React Testing Library (or Vitest) for unit/component tests
+  - [x] Configure Next.js for testing (jest.config.js, setup files)
+  - [x] Write component tests for critical UI elements (e.g., Arena3D, SystemOrchestrator interactions)
+  - [x] Update package.json scripts (`test`, `test:watch`, `test:coverage`)
+- [x] E2E Testing Setup (Optional/If required for "exhaustive")
+  - [x] Install Playwright
+  - [x] Write basic E2E flow (e.g., load page, check 3D canvas, check agents)
+- [x] Final Verification
+  - [x] Run complete test suite (Backend + Frontend)
+  - [x] Generate coverage reports
+  - [x] Create walkthrough documenting the test protocols
