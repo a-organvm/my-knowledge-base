@@ -196,6 +196,7 @@
 - [Lane parsing](feedback_cross_session_lane_parsing.md) — "X active" = active elsewhere
 - [No pick-one menus](feedback_no_pick_one_menus.md) — Execute all in logic order
 - [Do it yourself](feedback_do_it_yourself.md) — System does it; only surface body-required tasks
+- [Preservation-first repo rescue](feedback_preservation_first_repo_rescue.md) — When `.git` is poisoned, rescue via clean clone and prove no unique data loss before replacement
 - [Multi-variant showcase](feedback_multi_variant_showcase.md) — Build both; client decides by comparing
 - [Never tell user what to do](feedback_never_tell_user_what_to_do.md) — Log and track; don't lecture
 - [Prompt ontology](feedback_prompt_ontology.md) — Macro/micro/multiverse; ~7 micro per prompt
